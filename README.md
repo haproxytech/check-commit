@@ -1,5 +1,8 @@
 # Check if commit subject is compliant with HAProxy guidelines
 
+[![Contributors](https://img.shields.io/github/contributors/haproxytech/check-commit?color=purple)](https://github.com/haproxy/haproxy/blob/master/CONTRIBUTING)
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
+
 This action checks that the commit subject is compliant with the [patch classifying rules](https://github.com/haproxy/haproxy/blob/master/CONTRIBUTING#L632) of HAProxy contribution guidelines. Also it does minimal check for a meaningful message in the commit subject: no less than 20 characters and at least 3 words.
 
 ## Examples
