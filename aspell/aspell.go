@@ -115,18 +115,23 @@ func (a Aspell) checkSingle(data string, allowedWords []string) error {
 func (a Aspell) Check(subjects []string, commitsFull []string, content []map[string]string) error {
 	var commitsFullData []string
 	for _, c := range commitsFull {
-		c2 := strings.TrimSpace(c)
-		if c2 == "" ||
-			strings.HasPrefix(c2, "Signed-off-by:") ||
-			strings.HasPrefix(c2, "Reviewed-by:") ||
-			strings.HasPrefix(c2, "Tested-by:") ||
-			strings.HasPrefix(c2, "Helped-by:") ||
-			strings.HasPrefix(c2, "Reported-by:") ||
-			strings.HasPrefix(c2, "Author:") ||
-			strings.HasPrefix(c2, "Co-authored-by:") {
-			continue
+		commit := []string{}
+		lines := strings.Split(c, "\n")
+		for _, l := range lines {
+			c2 := strings.TrimSpace(l)
+			if strings.HasPrefix(c2, "Signed-off-by:") ||
+				strings.HasPrefix(c2, "Reviewed-by:") ||
+				strings.HasPrefix(c2, "Tested-by:") ||
+				strings.HasPrefix(c2, "Helped-by:") ||
+				strings.HasPrefix(c2, "Reported-by:") ||
+				strings.HasPrefix(c2, "Author:") ||
+				strings.HasPrefix(c2, "Co-authored-by:") {
+				continue
+			}
+
+			commit = append(commit, l)
 		}
-		commitsFullData = append(commitsFullData, c)
+		commitsFullData = append(commitsFullData, strings.Join(commit, "\n"))
 	}
 
 	var response string

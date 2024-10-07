@@ -82,6 +82,21 @@ func TestAspell_Check(t *testing.T) {
 			content:     []map[string]string{{"test": "test"}},
 		},
 		true,
+	}, {
+		"Signed off 2",
+		fields{
+			Mode:         modeCommit,
+			MinLength:    3,
+			IgnoreFiles:  []string{"config"},
+			AllowedWords: []string{"config"},
+			HelpText:     "test",
+		},
+		args{
+			subjects:    []string{"BUG/MEDIUM: config: add default location of path to the configuration file"},
+			commitsFull: []string{"some commit info\n\n   Signed-off-by: Author: A locatoin <al@al.al>"},
+			content:     []map[string]string{{"test": "test"}},
+		},
+		false,
 	}}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
