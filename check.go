@@ -361,9 +361,13 @@ func getLocalCommitData() ([]string, []string, []map[string]string, error) {
 	diffs := []map[string]string{}
 	committer := ""
 	var commit1 *object.Commit
+	var oldestCommit *object.Commit
 	var commit2 *object.Commit
 	for {
 		commit, err := iter.Next()
+		if commit != nil {
+			oldestCommit = commit
+		}
 		if err == io.EOF {
 			break
 		}
@@ -399,6 +403,9 @@ func getLocalCommitData() ([]string, []string, []map[string]string, error) {
 
 	// Get the changes (diff) between the two commits
 	tree1, _ := commit1.Tree()
+	if commit2 == nil {
+		commit2 = oldestCommit
+	}
 	tree2, _ := commit2.Tree()
 	changes, err := object.DiffTree(tree2, tree1)
 	if err != nil {
