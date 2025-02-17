@@ -5,6 +5,7 @@ go 1.24.0
 require (
 	github.com/fatih/camelcase v1.0.0
 	github.com/google/go-github/v56 v56.0.0
+	github.com/joho/godotenv v1.5.1
 	github.com/xanzy/go-gitlab v0.115.0
 	golang.org/x/oauth2 v0.26.0
 	gopkg.in/src-d/go-git.v4 v4.13.1

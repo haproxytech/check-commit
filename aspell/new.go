@@ -24,8 +24,19 @@ func New(filename string) (Aspell, error) {
 		return Aspell{}, err
 	}
 
+	var extraAllowedWords []string
+	if aspell.RemoteFile.URL != "" {
+		extraAllowedWords, err = fetchRemoteFile(aspell)
+		if err != nil {
+			return Aspell{}, err
+		}
+	}
+
 	for i, word := range aspell.AllowedWords {
 		aspell.AllowedWords[i] = strings.ToLower(word)
+	}
+	for _, word := range extraAllowedWords {
+		aspell.AllowedWords = append(aspell.AllowedWords, strings.ToLower(word))
 	}
 
 	if aspell.MinLength < 1 {
@@ -58,6 +69,9 @@ allowed:
   - aspell
   - config
 `
+	}
+	if aspell.RemoteFile.URL != "" {
+		aspell.HelpText += fmt.Sprintf("\n\nallowed words can be added to remote file:\n  url: %s\n", aspell.RemoteFile.URL)
 	}
 
 	ignoreFiles := []string{"go.mod", "go.sum"}

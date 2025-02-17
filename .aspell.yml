@@ -30,3 +30,6 @@ allowed:
   - devel
   - ioutil
   - defaultconf
+  - json
+  - req
+  - nallowed
