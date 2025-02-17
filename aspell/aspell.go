@@ -14,12 +14,19 @@ import (
 	"github.com/fatih/camelcase"
 )
 
+type RemoteFile struct {
+	URL             string `yaml:"url"`
+	HeaderFromENV   string `yaml:"header_from_env"`
+	AllowedItemsKey string `yaml:"allowed_items_key"`
+}
+
 type Aspell struct {
-	Mode         mode     `yaml:"mode"`
-	MinLength    int      `yaml:"min_length"`
-	IgnoreFiles  []string `yaml:"ignore_files"`
-	AllowedWords []string `yaml:"allowed"`
-	HelpText     string   `yaml:"-"`
+	Mode         mode       `yaml:"mode"`
+	RemoteFile   RemoteFile `yaml:"remote_file"`
+	MinLength    int        `yaml:"min_length"`
+	IgnoreFiles  []string   `yaml:"ignore_files"`
+	AllowedWords []string   `yaml:"allowed"`
+	HelpText     string     `yaml:"-"`
 }
 
 var (

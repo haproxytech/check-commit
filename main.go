@@ -8,9 +8,11 @@ import (
 
 	"github.com/haproxytech/check-commit/v5/aspell"
 	"github.com/haproxytech/check-commit/v5/version"
+	"github.com/joho/godotenv"
 )
 
 func main() {
+	_ = godotenv.Load(".env")
 	err := version.Set()
 	if err != nil {
 		log.Fatal(err)
