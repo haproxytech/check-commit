@@ -16,8 +16,8 @@ import (
 	"unicode/utf8"
 
 	"github.com/google/go-github/v56/github"
+	gitlab "gitlab.com/gitlab-org/api/client-go"
 
-	"github.com/xanzy/go-gitlab"
 	"golang.org/x/oauth2"
 	git "gopkg.in/src-d/go-git.v4"
 	"gopkg.in/src-d/go-git.v4/plumbing/format/diff"
