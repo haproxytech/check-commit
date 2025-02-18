@@ -16,7 +16,9 @@ import (
 
 type RemoteFile struct {
 	URL             string `yaml:"url"`
+	URLEnv          string `yaml:"url_env"`
 	HeaderFromENV   string `yaml:"header_from_env"`
+	PrivateTokenENV string `yaml:"private_token_env"`
 	AllowedItemsKey string `yaml:"allowed_items_key"`
 }
 
