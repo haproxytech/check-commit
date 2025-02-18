@@ -33,3 +33,4 @@ allowed:
   - json
   - req
   - nallowed
+  - url

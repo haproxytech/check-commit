@@ -14,7 +14,7 @@ func New(filename string) (Aspell, error) {
 	var err error
 	fileExists := true
 	if data, err = os.ReadFile(filename); err != nil {
-		log.Printf("warning: aspell exceptions file not found (%s)", err)
+		log.Printf("warning: aspell exceptions file not found (%s)", err.Error())
 		fileExists = false
 	}
 
@@ -25,10 +25,14 @@ func New(filename string) (Aspell, error) {
 	}
 
 	var extraAllowedWords []string
-	if aspell.RemoteFile.URL != "" {
+	if aspell.RemoteFile.URL != "" || aspell.RemoteFile.URLEnv != "" {
 		extraAllowedWords, err = fetchRemoteFile(aspell)
 		if err != nil {
+			log.Printf("warning: aspell remote file (%s)", err.Error())
 			return Aspell{}, err
+		}
+		if len(extraAllowedWords) == 0 {
+			log.Printf("warning: aspell remote file is empty")
 		}
 	}
 

@@ -2,6 +2,7 @@ package aspell
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"os"
 	"strings"
@@ -11,8 +12,8 @@ import (
 
 func fetchRemoteFile(aspell Aspell) ([]string, error) {
 	url := aspell.RemoteFile.URL
-	if url == "" {
-		return []string{}, nil
+	if aspell.RemoteFile.URLEnv != "" {
+		url = os.Getenv(aspell.RemoteFile.URLEnv)
 	}
 
 	req, err := http.NewRequest("GET", url, nil)
@@ -24,14 +25,21 @@ func fetchRemoteFile(aspell Aspell) ([]string, error) {
 		envValue := os.Getenv(aspell.RemoteFile.HeaderFromENV)
 		req.Header.Set(aspell.RemoteFile.HeaderFromENV, envValue)
 	}
+	if aspell.RemoteFile.PrivateTokenENV != "" {
+		envValue := os.Getenv(aspell.RemoteFile.PrivateTokenENV)
+		req.Header.Set("PRIVATE-TOKEN", envValue)
+	}
 
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, err
 	}
-
 	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("error fetching remote file: %s", resp.Status)
+	}
 
 	var data map[string]interface{}
 	err = json.NewDecoder(resp.Body).Decode(&data)
