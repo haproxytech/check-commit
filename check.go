@@ -18,10 +18,10 @@ import (
 	"github.com/google/go-github/v56/github"
 	gitlab "gitlab.com/gitlab-org/api/client-go"
 
+	git "github.com/go-git/go-git/v5"
+	"github.com/go-git/go-git/v5/plumbing/format/diff"
+	"github.com/go-git/go-git/v5/plumbing/object"
 	"golang.org/x/oauth2"
-	git "gopkg.in/src-d/go-git.v4"
-	"gopkg.in/src-d/go-git.v4/plumbing/format/diff"
-	"gopkg.in/src-d/go-git.v4/plumbing/object"
 	yaml "gopkg.in/yaml.v3"
 )
 
