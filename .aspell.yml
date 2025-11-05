@@ -34,3 +34,5 @@ allowed:
   - req
   - nallowed
   - url
+  - english
+  - lang
