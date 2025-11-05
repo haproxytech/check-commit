@@ -195,7 +195,7 @@ func (a Aspell) Check(subjects []string, commitsFull []string, content []map[str
 }
 
 func checkWithAspellExec(subject string) (string, error) {
-	cmd := exec.Command("aspell", "--list")
+	cmd := exec.Command("aspell", "--lang=en", "--list")
 	cmd.Stdin = strings.NewReader(subject)
 
 	var stdout, stderr bytes.Buffer
