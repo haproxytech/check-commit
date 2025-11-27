@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/haproxytech/check-commit/v5/aspell"
+	"github.com/haproxytech/check-commit/v5/junit"
 )
 
 func Test_Aspell(t *testing.T) {
@@ -35,7 +36,7 @@ func Test_Aspell(t *testing.T) {
 	}
 	err = aspell.Check([]string{"subject"}, []string{"body"}, []map[string]string{
 		{filename: readme},
-	})
+	}, &junit.JunitSuiteDummy{})
 	if err != nil {
 		t.Errorf("checkWithAspell() error = %v", err)
 	}
