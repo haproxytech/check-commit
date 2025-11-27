@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/haproxytech/check-commit/v5/junit"
 	yaml "gopkg.in/yaml.v3"
 )
 
@@ -100,7 +101,7 @@ func TestDifferentPolicy(t *testing.T) {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			if err := c.CheckSubject([]byte(tt.subject)); (err != nil) != tt.wantErr {
+			if err := c.CheckSubject([]byte(tt.subject), &junit.JunitSuiteDummy{}); (err != nil) != tt.wantErr {
 				t.Errorf("checkSubject() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})

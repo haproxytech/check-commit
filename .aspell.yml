@@ -36,3 +36,4 @@ allowed:
   - url
   - english
   - lang
+  - junit

@@ -7,6 +7,7 @@ require (
 	github.com/go-git/go-git/v5 v5.16.2
 	github.com/google/go-github/v56 v56.0.0
 	github.com/joho/godotenv v1.5.1
+	github.com/oktalz/junit-report v0.0.0-20251126212431-230eb8c3b576
 	gitlab.com/gitlab-org/api/client-go v0.159.0
 	golang.org/x/oauth2 v0.32.0
 	gopkg.in/yaml.v3 v3.0.1

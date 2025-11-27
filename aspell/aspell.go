@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/haproxytech/check-commit/v5/junit"
 	"github.com/haproxytech/check-commit/v5/match"
 
 	"github.com/fatih/camelcase"
@@ -121,7 +122,7 @@ func (a Aspell) checkSingle(data string, allowedWords []string) error {
 	return nil
 }
 
-func (a Aspell) Check(subjects []string, commitsFull []string, content []map[string]string) error {
+func (a Aspell) Check(subjects []string, commitsFull []string, content []map[string]string, junitSuite junit.Interface) error {
 	var commitsFullData []string
 	for _, c := range commitsFull {
 		commit := []string{}
@@ -171,6 +172,7 @@ func (a Aspell) Check(subjects []string, commitsFull []string, content []map[str
 					imports = match.GetImportWordsFromGoFile(name)
 				}
 				if err := a.checkSingle(v, imports); err != nil {
+					junitSuite.AddMessageFailed(name, "aspell check failed", err.Error())
 					log.Println(name, err.Error())
 					response += fmt.Sprintf("%s\n", err)
 				}
@@ -183,6 +185,7 @@ func (a Aspell) Check(subjects []string, commitsFull []string, content []map[str
 
 	for _, subject := range checks {
 		if err := a.checkSingle(subject, []string{}); err != nil {
+			junitSuite.AddMessageFailed("commit message", "aspell check failed", err.Error())
 			log.Println("commit message", err.Error())
 			response += fmt.Sprintf("%s\n", err)
 		}

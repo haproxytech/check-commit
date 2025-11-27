@@ -2,6 +2,8 @@ package aspell
 
 import (
 	"testing"
+
+	"github.com/haproxytech/check-commit/v5/junit"
 )
 
 func Test_checkWithAspell(t *testing.T) {
@@ -107,7 +109,7 @@ func TestAspell_Check(t *testing.T) {
 				AllowedWords: tt.fields.AllowedWords,
 				HelpText:     tt.fields.HelpText,
 			}
-			if err := a.Check(tt.args.subjects, tt.args.commitsFull, tt.args.content); (err != nil) != tt.wantErr {
+			if err := a.Check(tt.args.subjects, tt.args.commitsFull, tt.args.content, &junit.JunitSuiteDummy{}); (err != nil) != tt.wantErr {
 				t.Errorf("Aspell.Check() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})
