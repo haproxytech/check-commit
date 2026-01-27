@@ -284,7 +284,7 @@ func LoadCommitPolicy(filename string) (CommitPolicyConfig, error) {
 }
 
 func getGithubCommitData(junitSuite junit.Interface) ([]string, []string, []map[string]string, error) {
-	token := os.Getenv("API_TOKEN")
+	token := getAPIToken("GITHUB_TOKEN")
 	repo := os.Getenv("GITHUB_REPOSITORY")
 	ref := os.Getenv("GITHUB_REF")
 	event := os.Getenv("GITHUB_EVENT_NAME")
@@ -484,12 +484,12 @@ func cleanGitPatch(patch string) string {
 }
 
 func getGitlabCommitData(junitSuite junit.Interface) ([]string, []string, []map[string]string, error) {
-	gitlab_url := os.Getenv("CI_API_V4_URL")
-	token := os.Getenv("API_TOKEN")
+	gitlabURL := os.Getenv("CI_API_V4_URL")
+	token := getAPIToken("GITLAB_TOKEN")
 	mri := os.Getenv("CI_MERGE_REQUEST_IID")
 	project := os.Getenv("CI_MERGE_REQUEST_PROJECT_ID")
 
-	gitlabClient, err := gitlab.NewClient(token, gitlab.WithBaseURL(gitlab_url))
+	gitlabClient, err := gitlab.NewClient(token, gitlab.WithBaseURL(gitlabURL))
 	if err != nil {
 		junitSuite.AddMessageFailed("", "failed to create gitlab client", err.Error())
 		return nil, nil, nil, fmt.Errorf("failed to create gitlab client: %w", err)
@@ -506,7 +506,7 @@ func getGitlabCommitData(junitSuite junit.Interface) ([]string, []string, []map[
 		junitSuite.AddMessageFailed("", "invalid project id", err.Error())
 		return nil, nil, nil, fmt.Errorf("invalid project id %s", project)
 	}
-	commits, _, err := gitlabClient.MergeRequests.GetMergeRequestCommits(projectID, mrIID, &gitlab.GetMergeRequestCommitsOptions{})
+	commits, _, err := gitlabClient.MergeRequests.GetMergeRequestCommits(projectID, int64(mrIID), &gitlab.GetMergeRequestCommitsOptions{})
 	if err != nil {
 		junitSuite.AddMessageFailed("", "error fetching commits", err.Error())
 		return nil, nil, nil, fmt.Errorf("error fetching commits: %w", err)
@@ -528,7 +528,7 @@ func getGitlabCommitData(junitSuite junit.Interface) ([]string, []string, []map[
 			log.Printf("detected message %s from commit %s", l[0], hash)
 			subjects = append(subjects, l[0])
 			messages = append(messages, c.Message)
-			diff, _, err := gitlabClient.MergeRequests.ListMergeRequestDiffs(projectID, mrIID, &gitlab.ListMergeRequestDiffsOptions{})
+			diff, _, err := gitlabClient.MergeRequests.ListMergeRequestDiffs(projectID, int64(mrIID), &gitlab.ListMergeRequestDiffsOptions{})
 			if err != nil {
 				junitSuite.AddMessageFailed("", "error fetching commit changes", err.Error())
 				return nil, nil, nil, fmt.Errorf("error fetching commit changes: %w", err)
