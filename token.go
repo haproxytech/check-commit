@@ -2,10 +2,10 @@ package main
 
 import "os"
 
-func getAPIToken(alterative string) string {
+func getAPIToken(alternative string) string {
 	token := os.Getenv("API_TOKEN")
 	if token == "" {
-		token = os.Getenv(alterative)
+		token = os.Getenv(alternative)
 	}
 
 	return token
