@@ -37,7 +37,7 @@ func Test_Aspell(t *testing.T) {
 	}
 	err = aspellCheck.Check([]string{"subject"}, []string{"body"}, []map[string]string{
 		{filename: readme.String()},
-	}, &junit.JunitSuiteDummy{})
+	}, &junit.JunitSuiteDummy{}, nil)
 	if err != nil {
 		t.Errorf("checkWithAspell() error = %v", err)
 	}

@@ -112,7 +112,9 @@ func start(junitSuite junit.Interface) {
 		return
 	}
 
-	err = aspellCheck.Check(subjects, messages, content, junitSuite)
+	gitHashes := getGitHashes(repoPath)
+
+	err = aspellCheck.Check(subjects, messages, content, junitSuite, gitHashes)
 	if err != nil {
 		log.Print("encountered one or more commit message spelling errors")
 		// log.Fatalf("%s\n", err)

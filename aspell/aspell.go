@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os/exec"
+	"regexp"
 	"slices"
 	"strings"
 
@@ -121,7 +122,7 @@ func (a Aspell) checkSingle(data string, allowedWords []string) error {
 	return nil
 }
 
-func (a Aspell) Check(subjects []string, commitsFull []string, content []map[string]string, junitSuite junit.Interface) error {
+func (a Aspell) Check(subjects []string, commitsFull []string, content []map[string]string, junitSuite junit.Interface, gitHashes map[string]struct{}) error {
 	var commitsFullData []string
 	for _, c := range commitsFull {
 		commit := []string{}
@@ -141,6 +142,14 @@ func (a Aspell) Check(subjects []string, commitsFull []string, content []map[str
 			commit = append(commit, l)
 		}
 		commitsFullData = append(commitsFullData, strings.Join(commit, "\n"))
+	}
+
+	// Remove known git commit hashes from body portions of commit messages
+	// so they are not flagged by spell checking. Subject lines are preserved.
+	if len(gitHashes) > 0 {
+		for i, c := range commitsFullData {
+			commitsFullData[i] = removeKnownHashesFromBody(c, gitHashes)
+		}
 	}
 
 	var response strings.Builder
@@ -192,6 +201,30 @@ func (a Aspell) Check(subjects []string, commitsFull []string, content []map[str
 		return fmt.Errorf("%s", response.String())
 	}
 	return nil
+}
+
+var hexStringRe = regexp.MustCompile(`[0-9a-fA-F]{7,40}`)
+
+// removeKnownHashesFromBody removes known git commit hashes from the body
+// of a commit message, leaving the subject line intact. A hex string in the
+// body is removed if it is a prefix of (or equal to) any known full hash.
+func removeKnownHashesFromBody(message string, fullHashes map[string]struct{}) string {
+	parts := strings.SplitN(message, "\n\n", 2)
+	if len(parts) < 2 {
+		return message // no body
+	}
+
+	body := hexStringRe.ReplaceAllStringFunc(parts[1], func(match string) string {
+		lower := strings.ToLower(match)
+		for hash := range fullHashes {
+			if strings.HasPrefix(hash, lower) {
+				return ""
+			}
+		}
+		return match
+	})
+
+	return parts[0] + "\n\n" + body
 }
 
 func checkWithAspellExec(subject string) (string, error) {

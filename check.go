@@ -575,3 +575,35 @@ func (c CommitPolicyConfig) CheckSubjectList(subjects []string, junitSuite junit
 }
 
 const requiredCmdlineArgs = 2
+
+// getGitHashes opens the git repository at repoPath and collects all commit
+// hashes (full, lowercase). These are used to ignore commit hash references
+// that appear in commit message bodies.
+func getGitHashes(repoPath string) map[string]struct{} {
+	hashes := map[string]struct{}{}
+
+	repo, err := git.PlainOpen(repoPath)
+	if err != nil {
+		log.Printf("warning: could not open git repo for hash collection: %s", err)
+		return hashes
+	}
+
+	iter, err := repo.Log(&git.LogOptions{
+		Order: git.LogOrderCommitterTime,
+		All:   true,
+	})
+	if err != nil {
+		log.Printf("warning: could not get git log for hash collection: %s", err)
+		return hashes
+	}
+
+	_ = iter.ForEach(func(c *object.Commit) error {
+		full := strings.ToLower(c.Hash.String())
+		hashes[full] = struct{}{}
+		return nil
+	})
+
+	log.Printf("collected %d git commit hashes for body hash filtering", len(hashes))
+
+	return hashes
+}
