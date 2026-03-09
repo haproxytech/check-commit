@@ -10,6 +10,7 @@ import (
 	"log"
 	"os"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"unicode"
@@ -27,8 +28,8 @@ import (
 )
 
 type patchTypeT struct {
-	Values []string `yaml:"Values"`
 	Scope  string   `yaml:"Scope"`
+	Values []string `yaml:"Values"`
 }
 
 type tagAlternativesT struct {
@@ -39,8 +40,8 @@ type tagAlternativesT struct {
 type CommitPolicyConfig struct {
 	PatchScopes map[string][]string   `yaml:"PatchScopes"`
 	PatchTypes  map[string]patchTypeT `yaml:"PatchTypes"`
-	TagOrder    []tagAlternativesT    `yaml:"TagOrder"`
 	HelpText    string                `yaml:"HelpText"`
+	TagOrder    []tagAlternativesT    `yaml:"TagOrder"`
 }
 
 const (
@@ -138,18 +139,13 @@ func (c CommitPolicyConfig) CheckPatchTypes(tag, severity string, patchTypeName 
 			}
 
 			if c.PatchTypes[patchTypeName].Scope == "" {
-
 				log.Printf("unable to verify severity %s without definitions", severity)
 
 				break // subject has severity but there is no definition to verify it
 			}
 
-			for _, allowedScope := range c.PatchScopes[c.PatchTypes[patchTypeName].Scope] {
-				if severity == allowedScope {
-					tagScopeOK = true
-
-					break
-				}
+			if slices.Contains(c.PatchScopes[c.PatchTypes[patchTypeName].Scope], severity) {
+				tagScopeOK = true
 			}
 		}
 	}
@@ -203,7 +199,7 @@ func (c CommitPolicyConfig) CheckSubject(rawSubject []byte, junitSuite junit.Int
 		for _, pType := range tagAlternative.PatchTypes { // we allow more than one set of tags in a position
 			if c.CheckPatchTypes(tag, severity, pType) { // we found what we were looking for, so consume input
 				rawSubject = rawSubject[submatch[1]:]
-				tagOK = tagOK || true
+				tagOK = true
 
 				break
 			}
@@ -249,18 +245,17 @@ func readGitEnvironment() (string, error) {
 		log.Printf("using api url '%s'\n", url)
 
 		return GITHUB, nil
-	} else {
-		url = os.Getenv("CI_API_V4_URL")
-		if url != "" {
-			log.Printf("detected %s environment\n", GITLAB)
-			log.Printf("using api url '%s'\n", url)
-
-			return GITLAB, nil
-		} else {
-			return LOCAL, nil
-			// return "", fmt.Errorf("no suitable git environment variables found: %w", ErrGitEnvironment)
-		}
 	}
+
+	url = os.Getenv("CI_API_V4_URL")
+	if url != "" {
+		log.Printf("detected %s environment\n", GITLAB)
+		log.Printf("using api url '%s'\n", url)
+
+		return GITLAB, nil
+	}
+
+	return LOCAL, nil
 }
 
 func LoadCommitPolicy(filename string) (CommitPolicyConfig, error) {
@@ -314,7 +309,7 @@ func getGithubCommitData(junitSuite junit.Interface) ([]string, []string, []map[
 		prNo, err := strconv.Atoi(refSlice[2])
 		if err != nil {
 			junitSuite.AddMessageFailed("", "error fetching PR number from ref", fmt.Sprintf("invalid pr number: %s", refSlice[2]))
-			return nil, nil, nil, fmt.Errorf("Error fetching PR number from %s: %w", refSlice[2], err)
+			return nil, nil, nil, fmt.Errorf("error fetching PR number from %s: %w", refSlice[2], err)
 		}
 
 		commits, _, err := githubClient.PullRequests.ListCommits(ctx, owner, project, prNo, &github.ListOptions{})
@@ -359,10 +354,10 @@ func getGithubCommitData(junitSuite junit.Interface) ([]string, []string, []map[
 			diffs = append(diffs, content)
 		}
 		return subjects, messages, diffs, nil
-	} else {
-		junitSuite.AddMessageFailed("", "unsupported event name", fmt.Sprintf("unsupported event name: %s", event))
-		return nil, nil, nil, fmt.Errorf("unsupported event name: %s", event)
 	}
+
+	junitSuite.AddMessageFailed("", "unsupported event name", fmt.Sprintf("unsupported event name: %s", event))
+	return nil, nil, nil, fmt.Errorf("unsupported event name: %s", event)
 }
 
 func getLocalCommitData(junitSuite junit.Interface) ([]string, []string, []map[string]string, error) {
@@ -448,7 +443,7 @@ func getLocalCommitData(junitSuite junit.Interface) ([]string, []string, []map[s
 		}
 		for _, file := range patch.FilePatches() {
 			chunks := file.Chunks()
-			fileChanges := ``
+			var fileChanges strings.Builder
 
 			for _, chunk := range chunks {
 				if chunk.Type() == diff.Delete {
@@ -457,13 +452,13 @@ func getLocalCommitData(junitSuite junit.Interface) ([]string, []string, []map[s
 				if chunk.Type() == diff.Equal {
 					continue
 				}
-				fileChanges += chunk.Content() + "\n"
+				fileChanges.WriteString(chunk.Content() + "\n")
 			}
-			if fileChanges == "" {
+			if fileChanges.String() == "" {
 				continue
 			}
 
-			diffs = append(diffs, map[string]string{change.To.Name: fileChanges})
+			diffs = append(diffs, map[string]string{change.To.Name: fileChanges.String()})
 		}
 	}
 	return subjects, messages, diffs, nil
@@ -528,13 +523,13 @@ func getGitlabCommitData(junitSuite junit.Interface) ([]string, []string, []map[
 			log.Printf("detected message %s from commit %s", l[0], hash)
 			subjects = append(subjects, l[0])
 			messages = append(messages, c.Message)
-			diff, _, err := gitlabClient.MergeRequests.ListMergeRequestDiffs(projectID, int64(mrIID), &gitlab.ListMergeRequestDiffsOptions{})
+			mrDiffs, _, err := gitlabClient.MergeRequests.ListMergeRequestDiffs(projectID, int64(mrIID), &gitlab.ListMergeRequestDiffsOptions{})
 			if err != nil {
 				junitSuite.AddMessageFailed("", "error fetching commit changes", err.Error())
 				return nil, nil, nil, fmt.Errorf("error fetching commit changes: %w", err)
 			}
 			content := map[string]string{}
-			for _, d := range diff {
+			for _, d := range mrDiffs {
 				if _, ok := content[d.NewPath]; ok {
 					continue
 				}
@@ -561,18 +556,18 @@ func getCommitData(repoEnv string, junitSuite junit.Interface) ([]string, []stri
 var ErrSubjectList = errors.New("subjects contain errors")
 
 func (c CommitPolicyConfig) CheckSubjectList(subjects []string, junitSuite junit.Interface) error {
-	errors := false
+	hasErrors := false
 
 	for _, subject := range subjects {
 		subject = strings.Trim(subject, "'")
 		if err := c.CheckSubject([]byte(subject), junitSuite); err != nil {
 			log.Printf("%s, original subject message '%s'", err, subject)
 
-			errors = true
+			hasErrors = true
 		}
 	}
 
-	if errors {
+	if hasErrors {
 		return ErrSubjectList
 	}
 

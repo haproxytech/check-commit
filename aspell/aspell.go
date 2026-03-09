@@ -6,7 +6,6 @@ import (
 	"log"
 	"os/exec"
 	"slices"
-	"sort"
 	"strings"
 
 	"github.com/haproxytech/check-commit/v5/junit"
@@ -24,12 +23,12 @@ type RemoteFile struct {
 }
 
 type Aspell struct {
-	Mode         mode       `yaml:"mode"`
 	RemoteFile   RemoteFile `yaml:"remote_file"`
-	MinLength    int        `yaml:"min_length"`
+	Mode         mode       `yaml:"mode"`
+	HelpText     string     `yaml:"-"`
 	IgnoreFiles  []string   `yaml:"ignore_files"`
 	AllowedWords []string   `yaml:"allowed"`
-	HelpText     string     `yaml:"-"`
+	MinLength    int        `yaml:"min_length"`
 }
 
 var (
@@ -116,7 +115,7 @@ func (a Aspell) checkSingle(data string, allowedWords []string) error {
 		for k := range m {
 			badWords = append(badWords, k)
 		}
-		sort.Strings(badWords)
+		slices.Sort(badWords)
 		return fmt.Errorf("aspell: %s", badWords)
 	}
 	return nil
@@ -126,8 +125,8 @@ func (a Aspell) Check(subjects []string, commitsFull []string, content []map[str
 	var commitsFullData []string
 	for _, c := range commitsFull {
 		commit := []string{}
-		lines := strings.Split(c, "\n")
-		for _, l := range lines {
+		lines := strings.SplitSeq(c, "\n")
+		for l := range lines {
 			c2 := strings.TrimSpace(l)
 			if strings.HasPrefix(c2, "Signed-off-by:") ||
 				strings.HasPrefix(c2, "Reviewed-by:") ||
@@ -144,7 +143,7 @@ func (a Aspell) Check(subjects []string, commitsFull []string, content []map[str
 		commitsFullData = append(commitsFullData, strings.Join(commit, "\n"))
 	}
 
-	var response string
+	var response strings.Builder
 	var checks []string
 	switch a.Mode {
 	case modeDisabled:
@@ -174,25 +173,23 @@ func (a Aspell) Check(subjects []string, commitsFull []string, content []map[str
 				if err := a.checkSingle(v, imports); err != nil {
 					junitSuite.AddMessageFailed(name, "aspell check failed", err.Error())
 					log.Println(name, err.Error())
-					response += fmt.Sprintf("%s\n", err)
+					response.WriteString(fmt.Sprintf("%s\n", err))
 				}
 			}
 		}
 		checks = commitsFullData
-	default:
-		checks = subjects
 	}
 
 	for _, subject := range checks {
 		if err := a.checkSingle(subject, []string{}); err != nil {
 			junitSuite.AddMessageFailed("commit message", "aspell check failed", err.Error())
 			log.Println("commit message", err.Error())
-			response += fmt.Sprintf("%s\n", err)
+			response.WriteString(fmt.Sprintf("%s\n", err))
 		}
 	}
 
-	if len(response) > 0 {
-		return fmt.Errorf("%s", response)
+	if len(response.String()) > 0 {
+		return fmt.Errorf("%s", response.String())
 	}
 	return nil
 }

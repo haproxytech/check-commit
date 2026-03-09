@@ -98,7 +98,6 @@ func TestDifferentPolicy(t *testing.T) {
 	testsSpec = append(testsSpec, tests...)
 
 	for _, tt := range testsSpec {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			if err := c.CheckSubject([]byte(tt.subject), &junit.JunitSuiteDummy{}); (err != nil) != tt.wantErr {

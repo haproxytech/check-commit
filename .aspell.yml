@@ -39,3 +39,31 @@ allowed:
   - junit
   - deps
   - alternative
+  - awk
+  - betteralign
+  - cmd
+  - cmds
+  - cyclomatic
+  - desc
+  - dotenv
+  - eval
+  - fmt
+  - formatter
+  - gobin
+  - gofumpt
+  - gotestsum
+  - govulncheck
+  - hivis
+  - linters
+  - Printf
+  - Println
+  - staticcheck
+  - struct
+  - structs
+  - taskfile
+  - testdox
+  - tmp
+  - toml
+  - unexported
+  - unhandled
+  - yml

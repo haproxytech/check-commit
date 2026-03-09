@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"log"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/haproxytech/check-commit/v5/aspell"
@@ -13,7 +14,7 @@ import (
 func Test_Aspell(t *testing.T) {
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
 
-	aspell, err := aspell.New(".aspell.yml")
+	aspellCheck, err := aspell.New(".aspell.yml")
 	if err != nil {
 		t.Errorf("checkWithAspell() error = %v", err)
 	}
@@ -27,15 +28,15 @@ func Test_Aspell(t *testing.T) {
 	defer readmeFile.Close()
 
 	scanner := bufio.NewScanner(readmeFile)
-	readme := ""
+	var readme strings.Builder
 	for scanner.Scan() {
-		readme += scanner.Text() + "\n"
+		readme.WriteString(scanner.Text() + "\n")
 	}
 	if err := scanner.Err(); err != nil {
 		t.Errorf("could not read "+filename+" file: %v", err)
 	}
-	err = aspell.Check([]string{"subject"}, []string{"body"}, []map[string]string{
-		{filename: readme},
+	err = aspellCheck.Check([]string{"subject"}, []string{"body"}, []map[string]string{
+		{filename: readme.String()},
 	}, &junit.JunitSuiteDummy{})
 	if err != nil {
 		t.Errorf("checkWithAspell() error = %v", err)

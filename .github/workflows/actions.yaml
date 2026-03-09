@@ -11,8 +11,12 @@ jobs:
         with:
           go-version-file: 'go.mod'
           check-latest: true
-      - name: golangci-lint
-        uses: golangci/golangci-lint-action@v6
+      - name: Install Task
+        uses: arduino/setup-task@v2
+        with:
+          version: 3.x
+      - name: lint
+        run: task lint
   go_build:
     name: Go build
     runs-on: ubuntu-latest

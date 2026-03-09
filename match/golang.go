@@ -12,11 +12,11 @@ func findImports(fileContent, startStr, endStr string, process func(data string)
 	}
 	start += len(startStr)
 	content := fileContent[start:]
-	end := strings.Index(content, endStr)
-	if end == -1 {
+	before, _, ok := strings.Cut(content, endStr)
+	if !ok {
 		return
 	}
-	raw := content[:end]
+	raw := before
 	process(raw)
 }
 

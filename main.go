@@ -87,7 +87,7 @@ func start(junitSuite junit.Interface) {
 
 	if commitPolicy.IsEmpty() {
 		junitSuite.AddMessageOK("", "using empty configuration", "")
-		log.Printf("WARNING: using empty configuration (i.e. no verification)")
+		log.Print("WARNING: using empty configuration (i.e. no verification)")
 	}
 
 	gitEnv, err := readGitEnvironment()
@@ -114,12 +114,12 @@ func start(junitSuite junit.Interface) {
 
 	err = aspellCheck.Check(subjects, messages, content, junitSuite)
 	if err != nil {
-		log.Printf("encountered one or more commit message spelling errors\n")
+		log.Print("encountered one or more commit message spelling errors")
 		// log.Fatalf("%s\n", err)
 		log.Printf("%s\n", aspellCheck.HelpText)
 		exitCode = 1
 		return
 	}
 
-	log.Printf("check completed without errors\n")
+	log.Print("check completed without errors")
 }

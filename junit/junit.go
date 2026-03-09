@@ -7,8 +7,8 @@ type Interface interface {
 
 type JunitSuiteDummy struct{}
 
-func (j *JunitSuiteDummy) AddMessageFailed(name, message, details string) {
+func (*JunitSuiteDummy) AddMessageFailed(_, _, _ string) {
 }
 
-func (j *JunitSuiteDummy) AddMessageOK(name, message, details string) {
+func (*JunitSuiteDummy) AddMessageOK(_, _, _ string) {
 }

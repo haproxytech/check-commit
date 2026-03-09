@@ -32,7 +32,7 @@ func New(filename string) (Aspell, error) {
 			return Aspell{}, err
 		}
 		if len(extraAllowedWords) == 0 {
-			log.Printf("warning: aspell remote file is empty")
+			log.Print("warning: aspell remote file is empty")
 		}
 	}
 
@@ -48,10 +48,7 @@ func New(filename string) (Aspell, error) {
 	}
 
 	switch aspell.Mode {
-	case modeDisabled:
-	case modeSubject:
-	case modeCommit:
-	case modeAll:
+	case modeDisabled, modeSubject, modeCommit, modeAll:
 	case "":
 		aspell.Mode = modeSubject
 	default:

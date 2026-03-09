@@ -28,13 +28,13 @@ func MatchFilter(file, filter string) bool {
 		if err != nil {
 			return false
 		}
-		return matchFilter(file, filter) || matched
+		return matchFilterRegex(file, filter) || matched
 	}
 
 	return file == filter
 }
 
-func matchFilter(file, filter string) bool {
+func matchFilterRegex(file, filter string) bool {
 	filter = strings.Replace(filter, "*", ".*", -1)
 	re := regexp.MustCompile(filter)
 	return re.MatchString(file)

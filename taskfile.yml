@@ -1,0 +1,86 @@
+#https://taskfile.dev/
+version: "3"
+
+dotenv:
+  - .env
+
+includes:
+  vars:
+    taskfile: taskfile/.vars.yml
+    flatten: true
+  tools:
+    taskfile: taskfile/.tools.yml
+    flatten: true
+  go-tools:
+    taskfile: taskfile/go-tools.yml
+    flatten: true
+
+vars:
+
+tasks:
+  check-commit:
+    desc: "check if the commit message follows the conventional commit format"
+    cmds:
+      - go run .
+  ci:
+    desc: "do almost all the checks"
+    cmds:
+      - task: tidy
+      - task: format
+      - task: lint
+      - task: test
+
+  test:
+    desc: "run Go tests"
+    deps:
+      - task: check-go-tool
+        vars:
+          TOOL: GOTESTSUM
+    vars:
+      PKG: '{{default "./..." .PKG}}'
+      FORMAT: '{{default "testdox" .FORMAT}}'
+    cmds:
+      - |
+        /{{.TMP}}/gotestsum/{{.GOTESTSUM_VERSION}}/gotestsum \
+          --format-icons=hivis \
+          --format={{.FORMAT}} \
+          --format-hide-empty-pkg \
+          -- -count=1 \
+            -v \
+            {{.PKG}}
+
+  tidy:
+    desc: "run Go mod tidy"
+    cmds:
+      - go mod tidy
+
+  lint:
+    desc: "run Go linters"
+    deps:
+      - task: check-go-tools
+        vars:
+          TOOLS: [BETTERALIGN, REVIVE, STATICCHECK]
+    cmds:
+      - /{{.TMP}}/revive/{{.REVIVE_VERSION}}/revive -config revive.toml -formatter friendly -set_exit_status ./...
+      - /{{.TMP}}/staticcheck/{{.STATICCHECK_VERSION}}/staticcheck ./...
+      - /{{.TMP}}/betteralign/{{.BETTERALIGN_VERSION}}/betteralign ./...
+
+  format:
+    desc: "formats the code"
+    deps:
+      - task: check-go-tools
+        vars:
+          TOOLS: [BETTERALIGN, GOFUMPT]
+    cmds:
+      - go fix ./...
+      - /{{.TMP}}/betteralign/{{.BETTERALIGN_VERSION}}/betteralign -apply ./... || true
+      - /{{.TMP}}/gofumpt/{{.GOFUMPT_VERSION}}/gofumpt -l -w .
+
+  govulncheck:
+    desc: "run Go vulnerability check"
+    deps:
+      - task: check-go-tool
+        vars:
+          TOOL: GOVULNCHECK
+    cmds:
+      - /{{.TMP}}/govulncheck/{{.GOVULNCHECK_VERSION}}/govulncheck -show verbose ./...

@@ -2,6 +2,7 @@ package aspell
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -21,7 +22,7 @@ func fetchRemoteFile(aspell Aspell) ([]string, error) {
 	}
 
 	if url == "" {
-		return nil, fmt.Errorf("aspell remote file: URL is empty")
+		return nil, errors.New("aspell remote file: URL is empty")
 	}
 
 	req, err := http.NewRequest("GET", url, nil)
@@ -55,7 +56,7 @@ func fetchRemoteFile(aspell Aspell) ([]string, error) {
 		return nil, fmt.Errorf("error fetching remote file: %s", resp.Status)
 	}
 
-	var data map[string]interface{}
+	var data map[string]any
 	err = json.NewDecoder(resp.Body).Decode(&data)
 	if err != nil {
 		return nil, fmt.Errorf("aspell remote file: failed to decode JSON: %w", err)
@@ -63,7 +64,7 @@ func fetchRemoteFile(aspell Aspell) ([]string, error) {
 
 	var allowedWords []string
 
-	items, ok := data[aspell.RemoteFile.AllowedItemsKey].([]interface{})
+	items, ok := data[aspell.RemoteFile.AllowedItemsKey].([]any)
 	if !ok {
 		content, ok := data[aspell.RemoteFile.AllowedItemsKey].(string)
 		if !ok {
