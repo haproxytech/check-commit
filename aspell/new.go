@@ -64,6 +64,7 @@ Add words to allowed list if its false positive`
 content example:
 mode: subject
 min_length: 3
+no_ignore_identifiers: false
 ignore_files:
   - 'gen/*'
 allowed:
