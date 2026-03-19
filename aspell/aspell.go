@@ -227,15 +227,16 @@ func (a Aspell) checkFiles(content []map[string]string, identifierWords []string
 func (a Aspell) checkCommitMessages(commitsFullData []string, identifierWords []string, junitSuite junit.Interface, response *strings.Builder) {
 	for _, msg := range commitsFullData {
 		parts := strings.SplitN(msg, "\n\n", 2)
-		if err := a.checkSingle(parts[0], []string{}); err != nil {
+		subject := parts[0]
+		if err := a.checkSingle(subject, []string{}); err != nil {
 			junitSuite.AddMessageFailed("commit message", "aspell check failed", err.Error())
-			log.Println("commit message", err.Error())
+			log.Printf("commit %q subject %s", subject, err.Error())
 			_, _ = fmt.Fprintf(response, "%s\n", err)
 		}
 		if len(parts) > 1 {
 			if err := a.checkSingle(parts[1], identifierWords); err != nil {
 				junitSuite.AddMessageFailed("commit message", "aspell check failed", err.Error())
-				log.Println("commit message body", err.Error())
+				log.Printf("commit %q body %s", subject, err.Error())
 				_, _ = fmt.Fprintf(response, "%s\n", err)
 			}
 		}
