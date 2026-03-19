@@ -24,40 +24,18 @@ type RemoteFile struct {
 }
 
 type Aspell struct {
-	RemoteFile        RemoteFile `yaml:"remote_file"`
-	Mode              mode       `yaml:"mode"`
-	HelpText          string     `yaml:"-"`
-	IgnoreFiles       []string   `yaml:"ignore_files"`
-	AllowedWords      []string   `yaml:"allowed"`
-	MinLength         int        `yaml:"min_length"`
-	NoIgnoreIdentifiers bool     `yaml:"no_ignore_identifiers"`
+	RemoteFile          RemoteFile `yaml:"remote_file"`
+	Mode                mode       `yaml:"mode"`
+	HelpText            string     `yaml:"-"`
+	IgnoreFiles         []string   `yaml:"ignore_files"`
+	AllowedWords        []string   `yaml:"allowed"`
+	MinLength           int        `yaml:"min_length"`
+	NoIgnoreIdentifiers bool       `yaml:"no_ignore_identifiers"`
 }
 
 var (
-	acceptableWordsGlobal = map[string]struct{}{
-		"haproxy":    {},
-		"golang":     {},
-		"ascii":      {},
-		"api":        {},
-		"goreleaser": {},
-		"github":     {},
-		"gitlab":     {},
-		"yaml":       {},
-		"env":        {},
-		"config":     {},
-		"workdir":    {},
-		"entrypoint": {},
-		"sudo":       {},
-		"dockerfile": {},
-		"ghcr":       {},
-		"sed":        {},
-		"stdin":      {},
-		"args":       {},
-		"arg":        {},
-		"dev":        {},
-		"vcs":        {},
-	}
-	badWordsGlobal = map[string]struct{}{}
+	acceptableWordsGlobal = map[string]struct{}{}
+	badWordsGlobal        = map[string]struct{}{}
 )
 
 func (a Aspell) checkSingle(data string, allowedWords []string) error {
@@ -124,119 +102,144 @@ func (a Aspell) checkSingle(data string, allowedWords []string) error {
 }
 
 func (a Aspell) Check(subjects []string, commitsFull []string, content []map[string]string, junitSuite junit.Interface, gitHashes map[string]struct{}) error {
-	var commitsFullData []string
-	for _, c := range commitsFull {
-		commit := []string{}
-		lines := strings.SplitSeq(c, "\n")
-		for l := range lines {
-			c2 := strings.TrimSpace(l)
-			if strings.HasPrefix(c2, "Signed-off-by:") ||
-				strings.HasPrefix(c2, "Reviewed-by:") ||
-				strings.HasPrefix(c2, "Tested-by:") ||
-				strings.HasPrefix(c2, "Helped-by:") ||
-				strings.HasPrefix(c2, "Reported-by:") ||
-				strings.HasPrefix(c2, "Author:") ||
-				strings.HasPrefix(c2, "Co-authored-by:") {
-				continue
-			}
-
-			commit = append(commit, l)
-		}
-		commitsFullData = append(commitsFullData, strings.Join(commit, "\n"))
-	}
-
-	// Remove known git commit hashes from body portions of commit messages
-	// so they are not flagged by spell checking. Subject lines are preserved.
-	if len(gitHashes) > 0 {
-		for i, c := range commitsFullData {
-			commitsFullData[i] = removeKnownHashesFromBody(c, gitHashes)
-		}
-	}
-
-	// Collect identifiers (function names, variable names, etc.) from diff
-	// content so they can be ignored during spell checking.
-	var identifierWords []string
-	if !a.NoIgnoreIdentifiers {
-		seen := map[string]struct{}{}
-		for _, file := range content {
-			for name, v := range file {
-				for _, word := range match.GetIdentifiersFromContent(name, v) {
-					if _, ok := seen[word]; !ok {
-						seen[word] = struct{}{}
-						identifierWords = append(identifierWords, word)
-					}
-				}
-			}
-		}
-		if len(identifierWords) > 0 {
-			log.Printf("collected %d identifiers from diff content for spell check filtering", len(identifierWords))
-		}
-	}
+	commitsFullData := a.prepareCommits(commitsFull, gitHashes)
+	identifierWords := a.collectIdentifiers(content)
 
 	var response strings.Builder
 	switch a.Mode {
 	case modeDisabled:
 		return nil
 	case modeSubject:
-		for _, subject := range subjects {
-			if err := a.checkSingle(subject, []string{}); err != nil {
-				junitSuite.AddMessageFailed("commit message", "aspell check failed", err.Error())
-				log.Println("commit message", err.Error())
-				response.WriteString(fmt.Sprintf("%s\n", err))
-			}
-		}
+		a.checkSubjects(subjects, junitSuite, &response)
 	case modeCommit, modeAll:
 		if a.Mode == modeAll {
-			for _, file := range content {
-				for name, v := range file {
-					nextFile := false
-					for _, filter := range a.IgnoreFiles {
-						if match.MatchFilter(name, filter) {
-							// log.Println("File", name, "in ignore list")
-							nextFile = true
-							continue
-						}
-					}
-					if nextFile {
-						continue
-					}
-					var imports []string
-					if strings.HasSuffix(name, ".go") {
-						imports = match.GetImportWordsFromGoFile(name)
-					}
-					imports = append(imports, identifierWords...)
-					if err := a.checkSingle(v, imports); err != nil {
-						junitSuite.AddMessageFailed(name, "aspell check failed", err.Error())
-						log.Println(name, err.Error())
-						response.WriteString(fmt.Sprintf("%s\n", err))
-					}
-				}
-			}
+			a.checkFiles(content, identifierWords, junitSuite, &response)
 		}
-		// Check commit messages: subject without identifiers, body with identifiers
-		for _, msg := range commitsFullData {
-			parts := strings.SplitN(msg, "\n\n", 2)
-			// Subject — no identifier filtering (same as hash behavior)
-			if err := a.checkSingle(parts[0], []string{}); err != nil {
-				junitSuite.AddMessageFailed("commit message", "aspell check failed", err.Error())
-				log.Println("commit message", err.Error())
-				response.WriteString(fmt.Sprintf("%s\n", err))
-			}
-			// Body — identifier filtering allowed
-			if len(parts) > 1 {
-				if err := a.checkSingle(parts[1], identifierWords); err != nil {
-					junitSuite.AddMessageFailed("commit message", "aspell check failed", err.Error())
-					log.Println("commit message body", err.Error())
-					response.WriteString(fmt.Sprintf("%s\n", err))
-				}
-			}
-		}
+		a.checkCommitMessages(commitsFullData, identifierWords, junitSuite, &response)
 	}
 
 	if len(response.String()) > 0 {
 		return fmt.Errorf("%s", response.String())
 	}
 	return nil
+}
+
+func (Aspell) prepareCommits(commitsFull []string, gitHashes map[string]struct{}) []string {
+	var commitsFullData []string
+	for _, c := range commitsFull {
+		commit := []string{}
+		for l := range strings.SplitSeq(c, "\n") {
+			c2 := strings.TrimSpace(l)
+			if isSignatureLine(c2) {
+				continue
+			}
+			commit = append(commit, l)
+		}
+		commitsFullData = append(commitsFullData, strings.Join(commit, "\n"))
+	}
+	if len(gitHashes) > 0 {
+		for i, c := range commitsFullData {
+			commitsFullData[i] = removeKnownHashesFromBody(c, gitHashes)
+		}
+	}
+	return commitsFullData
+}
+
+func isSignatureLine(line string) bool {
+	prefixes := []string{
+		"Signed-off-by:",
+		"Reviewed-by:",
+		"Tested-by:",
+		"Helped-by:",
+		"Reported-by:",
+		"Author:",
+		"Co-authored-by:",
+	}
+	for _, p := range prefixes {
+		if strings.HasPrefix(line, p) {
+			return true
+		}
+	}
+	return false
+}
+
+func (a Aspell) collectIdentifiers(content []map[string]string) []string {
+	if a.NoIgnoreIdentifiers {
+		return nil
+	}
+	var identifierWords []string
+	seen := map[string]struct{}{}
+	for _, file := range content {
+		for name, v := range file {
+			for _, word := range match.GetIdentifiersFromContent(name, v) {
+				if _, ok := seen[word]; !ok {
+					seen[word] = struct{}{}
+					identifierWords = append(identifierWords, word)
+				}
+			}
+		}
+	}
+	if len(identifierWords) > 0 {
+		log.Printf("collected %d identifiers from diff content for spell check filtering", len(identifierWords))
+	}
+	return identifierWords
+}
+
+func (a Aspell) checkSubjects(subjects []string, junitSuite junit.Interface, response *strings.Builder) {
+	for _, subject := range subjects {
+		if err := a.checkSingle(subject, []string{}); err != nil {
+			junitSuite.AddMessageFailed("commit message", "aspell check failed", err.Error())
+			log.Println("commit message", err.Error())
+			_, _ = fmt.Fprintf(response, "%s\n", err)
+		}
+	}
+}
+
+func (a Aspell) isIgnoredFile(name string) bool {
+	for _, filter := range a.IgnoreFiles {
+		if match.MatchFilter(name, filter) {
+			return true
+		}
+	}
+	return false
+}
+
+func (a Aspell) checkFiles(content []map[string]string, identifierWords []string, junitSuite junit.Interface, response *strings.Builder) {
+	for _, file := range content {
+		for name, v := range file {
+			if a.isIgnoredFile(name) {
+				continue
+			}
+			var imports []string
+			if strings.HasSuffix(name, ".go") {
+				imports = match.GetImportWordsFromGoFile(name)
+			}
+			imports = append(imports, identifierWords...)
+			if err := a.checkSingle(v, imports); err != nil {
+				junitSuite.AddMessageFailed(name, "aspell check failed", err.Error())
+				log.Println(name, err.Error())
+				_, _ = fmt.Fprintf(response, "%s\n", err)
+			}
+		}
+	}
+}
+
+func (a Aspell) checkCommitMessages(commitsFullData []string, identifierWords []string, junitSuite junit.Interface, response *strings.Builder) {
+	for _, msg := range commitsFullData {
+		parts := strings.SplitN(msg, "\n\n", 2)
+		if err := a.checkSingle(parts[0], []string{}); err != nil {
+			junitSuite.AddMessageFailed("commit message", "aspell check failed", err.Error())
+			log.Println("commit message", err.Error())
+			_, _ = fmt.Fprintf(response, "%s\n", err)
+		}
+		if len(parts) > 1 {
+			if err := a.checkSingle(parts[1], identifierWords); err != nil {
+				junitSuite.AddMessageFailed("commit message", "aspell check failed", err.Error())
+				log.Println("commit message body", err.Error())
+				_, _ = fmt.Fprintf(response, "%s\n", err)
+			}
+		}
+	}
 }
 
 var hexStringRe = regexp.MustCompile(`[0-9a-fA-F]{7,40}`)

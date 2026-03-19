@@ -79,7 +79,7 @@ func stripDiffPrefixes(content string) string {
 		} else {
 			b.WriteString(line)
 		}
-		b.WriteByte('\n')
+		_ = b.WriteByte('\n')
 	}
 	return b.String()
 }
