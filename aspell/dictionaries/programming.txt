@@ -40,8 +40,10 @@ deserialized
 destructor
 destructors
 django
+cyclomatic
 docstring
 docstrings
+dotenv
 dotnet
 dunder
 elasticsearch
@@ -56,9 +58,14 @@ gdb
 getter
 getters
 golang
+gobin
+gofumpt
+golangci
 gomod
 gopath
 goroot
+gotestsum
+govulncheck
 govet
 graphql
 grpc
@@ -67,11 +74,13 @@ idiomatic
 incref
 instantiate
 instantiated
+ioutil
 interop
 iterable
 itertools
 jinja
 jni
+junit
 jquery
 json
 jsonl
@@ -158,6 +167,7 @@ sprintf
 sqlalchemy
 sqlite
 stackframe
+submatch
 stringified
 stringify
 subprocess
@@ -184,6 +194,8 @@ typedefs
 typename
 typescript
 unary
+unexported
+unhandled
 uncomment
 uncommitted
 undeclared

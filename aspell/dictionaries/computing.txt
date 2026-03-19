@@ -7,6 +7,7 @@ addon
 addons
 algo
 alloc
+aspell
 async
 autoconf
 automake
@@ -36,6 +37,9 @@ charsets
 checksum
 checksums
 cli
+cmd
+cmdline
+cmds
 codebase
 codec
 codecs
@@ -57,6 +61,9 @@ datastore
 datastores
 deadlock
 deadlocks
+deps
+desc
+devel
 dealloc
 deallocate
 dedup
@@ -84,8 +91,11 @@ eval
 exec
 exfiltration
 exitcode
+failsafe
 falsy
 fifo
+fmt
+fprintf
 filepath
 filesystem
 filesystems
@@ -141,6 +151,7 @@ iterables
 jit
 keepalive
 keepalives
+lang
 kernal
 keyspace
 keystore
@@ -175,6 +186,7 @@ minify
 mmap
 mmapped
 monotonic
+msg
 msgpack
 multicast
 multicore
@@ -206,6 +218,7 @@ preload
 preloaded
 prepend
 preprocessor
+println
 printf
 proc
 profiler
@@ -218,12 +231,14 @@ qword
 racecondition
 readonly
 realloc
+req
 refactor
 refactored
 refactoring
 refcount
 regex
 regexes
+repo
 regexp
 regexps
 reindex
@@ -289,6 +304,7 @@ threadpool
 threadpools
 timestamp
 timestamps
+tmp
 tmpdir
 tmpfs
 toolchain

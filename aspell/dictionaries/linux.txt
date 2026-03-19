@@ -1,7 +1,9 @@
 # Operating systems and Linux terms
 alpine
+apk
 apparmor
 apt
+awk
 archlinux
 aufs
 bash
@@ -63,6 +65,7 @@ lspci
 lvm
 makedev
 mdadm
+mkdir
 meminfo
 mkfs
 mknod

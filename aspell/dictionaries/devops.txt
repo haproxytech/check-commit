@@ -3,6 +3,7 @@ ansible
 argocd
 artifactory
 bazel
+betteralign
 buildkit
 canary
 changelog
@@ -34,6 +35,7 @@ grafana
 greenfield
 grype
 hadolint
+hivis
 hashicorp
 hotfix
 hotfixes
@@ -88,6 +90,8 @@ scriptable
 semgrep
 semver
 shellcheck
+taskfile
+testdox
 shipit
 sla
 sonarqube
