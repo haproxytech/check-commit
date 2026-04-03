@@ -22,17 +22,25 @@ func main() {
 		log.Fatal(err)
 	}
 	if len(os.Args) == 2 {
-		for _, arg := range os.Args[1:] {
-			if arg == "version" {
-				fmt.Println("check-commit", version.Version)
-				fmt.Println("built from:", version.Repo)
-				fmt.Println("commit date:", version.CommitDate)
-				os.Exit(0)
+		switch os.Args[1] {
+		case "version":
+			fmt.Println("check-commit", version.Version)
+			fmt.Println("built from:", version.Repo)
+			fmt.Println("commit date:", version.CommitDate)
+			os.Exit(0)
+		case "tag":
+			fmt.Println(version.Tag)
+			os.Exit(0)
+		case "help":
+			aspell.PrintHelp()
+			os.Exit(0)
+		case "init":
+			if err := aspell.Init(".aspell.yml"); err != nil {
+				fmt.Fprintf(os.Stderr, "error: %s\n", err)
+				os.Exit(1)
 			}
-			if arg == "tag" {
-				fmt.Println(version.Tag)
-				os.Exit(0)
-			}
+			fmt.Println(".aspell.yml created")
+			os.Exit(0)
 		}
 	}
 	log.SetFlags(log.LstdFlags | log.Lshortfile)

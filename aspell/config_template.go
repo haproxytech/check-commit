@@ -1,0 +1,79 @@
+package aspell
+
+import (
+	"fmt"
+	"os"
+)
+
+// configTemplate is the full .aspell.yml with all options commented out and documented.
+const configTemplate = `## Spell check scope: disabled (off), subject (first line only),
+## commit (full commit message), all (commit + file content, default: subject)
+# mode: disabled | subject | commit | all
+
+## Minimum word length to spell-check (words shorter than this are skipped, default: 3)
+# min_length: 3
+
+## If true, code identifiers will NOT be excluded from spell check
+# no_ignore_identifiers: false
+
+## Where to collect code identifiers from to exclude as allowed words (default: files)
+##   diff  - only from the diff content (added lines)
+##   files - from the full content of changed files
+##   all   - from every file in the repository
+# identifier_scope: diff | files | all
+
+## File patterns to skip when mode is "all" (glob syntax)
+# ignore_files:
+#   - '*test.go'
+#   - 'gen/*'
+
+## Extra words to accept as correctly spelled (one per line, case-insensitive)
+# allowed:
+#   - myword
+#   - anotherword
+
+## Fetch an additional allowed-word list from a JSON API endpoint
+# remote_file:
+#   ## Direct URL to fetch
+#   url: "https://example.com/api/words"
+#   ## Or read the URL from this environment variable instead
+#   url_env: ALLOWED_WORDS_URL
+#   ## Set a custom HTTP header whose value is read from the named env var
+#   header_from_env: X-Custom-Header
+#   ## Set PRIVATE-TOKEN header from this env var (GitLab/GitHub auth)
+#   private_token_env: PRIVATE_TOKEN
+#   ## JSON key that contains the word list in the response
+#   allowed_items_key: words
+
+## Fetch dictionary files (.txt word lists or .rws aspell compiled dicts) from remote sources
+# dictionaries:
+#   ## Fetch every .txt/.rws file from a GitHub repo directory
+#   github:
+#     - url: "https://github.com/haproxytech/check-commit/tree/main/aspell/dictionaries"
+#       ## Optional env var holding a GitHub token (needed for private repos)
+#       token_env: GITHUB_TOKEN
+#   ## Fetch every .txt/.rws file from a GitLab repo directory (supports self-hosted instances)
+#   gitlab:
+#     - url: "https://gitlab.com/group/project/-/tree/main/path/to/dictionaries"
+#       ## Optional env var holding a GitLab private token (needed for private repos)
+#       token_env: GITLAB_TOKEN
+#   ## Fetch individual dictionary files by direct URL
+#   urls:
+#     - "https://raw.githubusercontent.com/haproxytech/check-commit/main/aspell/dictionaries/computing.txt"
+#     - "https://example.com/custom-words.txt"
+`
+
+// PrintHelp prints all available .aspell.yml configuration options to stdout.
+func PrintHelp() {
+	fmt.Print(".aspell.yml configuration options:\n\n")
+	fmt.Print(configTemplate)
+}
+
+// Init creates a .aspell.yml file with all options commented out.
+// Returns an error if the file already exists.
+func Init(filename string) error {
+	if _, err := os.Stat(filename); err == nil {
+		return fmt.Errorf("%s already exists", filename)
+	}
+	return os.WriteFile(filename, []byte(configTemplate), 0o644)
+}
