@@ -66,6 +66,14 @@ func New(filename string) (Aspell, error) {
 		return Aspell{}, fmt.Errorf("invalid mode: %s", aspell.Mode)
 	}
 
+	switch aspell.IdentifierScope {
+	case identifierScopeDiff, identifierScopeFiles, identifierScopeAll:
+	case "":
+		aspell.IdentifierScope = identifierScopeFiles
+	default:
+		return Aspell{}, fmt.Errorf("invalid identifier_scope: %s", aspell.IdentifierScope)
+	}
+
 	log.Printf("aspell mode set to %s", aspell.Mode)
 	if fileExists {
 		aspell.HelpText = `aspell can be configured with .aspell.yml file.

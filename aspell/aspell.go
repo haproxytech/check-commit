@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"fmt"
 	"log"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"slices"
 	"strings"
@@ -25,9 +27,10 @@ type RemoteFile struct {
 
 type Aspell struct {
 	RemoteFile          RemoteFile       `yaml:"remote_file"`
-	Dictionaries        DictionaryConfig `yaml:"dictionaries"`
 	Mode                mode             `yaml:"mode"`
 	HelpText            string           `yaml:"-"`
+	IdentifierScope     identifierScope  `yaml:"identifier_scope"`
+	Dictionaries        DictionaryConfig `yaml:"dictionaries"`
 	IgnoreFiles         []string         `yaml:"ignore_files"`
 	AllowedWords        []string         `yaml:"allowed"`
 	ExtraDicts          []string         `yaml:"-"` // paths to downloaded .rws files for aspell --extra-dicts
@@ -169,20 +172,63 @@ func (a Aspell) collectIdentifiers(content []map[string]string) []string {
 	if a.NoIgnoreIdentifiers {
 		return nil
 	}
-	var identifierWords []string
 	seen := map[string]struct{}{}
-	for _, file := range content {
-		for name, v := range file {
-			for _, word := range match.GetIdentifiersFromContent(name, v) {
-				if _, ok := seen[word]; !ok {
-					seen[word] = struct{}{}
-					identifierWords = append(identifierWords, word)
-				}
+	addWords := func(name, data string) {
+		for _, word := range match.GetIdentifiersFromContent(name, data) {
+			if _, ok := seen[word]; !ok {
+				seen[word] = struct{}{}
 			}
 		}
 	}
+
+	switch a.IdentifierScope {
+	case identifierScopeDiff:
+		for _, file := range content {
+			for name, v := range file {
+				addWords(name, v)
+			}
+		}
+	case identifierScopeFiles, "":
+		// Read full file content for each changed file
+		for _, file := range content {
+			for name := range file {
+				data, err := os.ReadFile(name)
+				if err != nil {
+					log.Printf("aspell: could not read file %s for identifiers, using diff: %v", name, err)
+					addWords(name, file[name])
+					continue
+				}
+				addWords(name, string(data))
+			}
+		}
+	case identifierScopeAll:
+		// Collect from all files in the repo
+		_ = filepath.WalkDir(".", func(path string, d os.DirEntry, err error) error {
+			if err != nil {
+				return nil
+			}
+			if d.IsDir() {
+				base := d.Name()
+				if base == ".git" || base == "vendor" || base == "node_modules" {
+					return filepath.SkipDir
+				}
+				return nil
+			}
+			data, err := os.ReadFile(path)
+			if err != nil {
+				return nil
+			}
+			addWords(path, string(data))
+			return nil
+		})
+	}
+
+	identifierWords := make([]string, 0, len(seen))
+	for w := range seen {
+		identifierWords = append(identifierWords, w)
+	}
 	if len(identifierWords) > 0 {
-		log.Printf("collected %d identifiers from diff content for spell check filtering", len(identifierWords))
+		log.Printf("collected %d identifiers (scope: %s) for spell check filtering", len(identifierWords), a.IdentifierScope)
 	}
 	return identifierWords
 }

@@ -8,3 +8,11 @@ const (
 	modeCommit   mode = "commit"
 	modeAll      mode = "all"
 )
+
+type identifierScope string
+
+const (
+	identifierScopeDiff  identifierScope = "diff"
+	identifierScopeFiles identifierScope = "files"
+	identifierScopeAll   identifierScope = "all"
+)

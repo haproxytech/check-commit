@@ -6,8 +6,14 @@ mode: all
 ## Minimum word length to spell-check (words shorter than this are skipped, default: 3)
 # min_length: 3
 
-## If true, code identifiers found in the diff will NOT be excluded from spell check
+## If true, code identifiers will NOT be excluded from spell check
 # no_ignore_identifiers: false
+
+## Where to collect code identifiers from to exclude as allowed words (default: files)
+##   diff  - only from the diff content (added lines)
+##   files - from the full content of changed files
+##   all   - from every file in the repository
+# identifier_scope: diff | files | all
 
 ## File patterns to skip when mode is "all" (glob syntax)
 ignore_files:

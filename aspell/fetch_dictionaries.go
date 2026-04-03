@@ -285,10 +285,10 @@ func fetchSingleFile(url, name, tokenEnv string) (fetchedDictionaries, error) {
 			return result, fmt.Errorf("creating temp file for %s: %w", name, err)
 		}
 		if _, err := tmpFile.Write(data); err != nil {
-			tmpFile.Close()
+			_ = tmpFile.Close()
 			return result, fmt.Errorf("writing temp file for %s: %w", name, err)
 		}
-		tmpFile.Close()
+		_ = tmpFile.Close()
 		result.rwsFiles = append(result.rwsFiles, tmpFile.Name())
 		log.Printf("aspell dictionaries: saved .rws dictionary %s to %s", name, tmpFile.Name())
 	case strings.HasSuffix(lower, ".txt"):
