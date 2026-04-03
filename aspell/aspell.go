@@ -24,13 +24,15 @@ type RemoteFile struct {
 }
 
 type Aspell struct {
-	RemoteFile          RemoteFile `yaml:"remote_file"`
-	Mode                mode       `yaml:"mode"`
-	HelpText            string     `yaml:"-"`
-	IgnoreFiles         []string   `yaml:"ignore_files"`
-	AllowedWords        []string   `yaml:"allowed"`
-	MinLength           int        `yaml:"min_length"`
-	NoIgnoreIdentifiers bool       `yaml:"no_ignore_identifiers"`
+	RemoteFile          RemoteFile       `yaml:"remote_file"`
+	Dictionaries        DictionaryConfig `yaml:"dictionaries"`
+	Mode                mode             `yaml:"mode"`
+	HelpText            string           `yaml:"-"`
+	IgnoreFiles         []string         `yaml:"ignore_files"`
+	AllowedWords        []string         `yaml:"allowed"`
+	ExtraDicts          []string         `yaml:"-"` // paths to downloaded .rws files for aspell --extra-dicts
+	MinLength           int              `yaml:"min_length"`
+	NoIgnoreIdentifiers bool             `yaml:"no_ignore_identifiers"`
 }
 
 var (
@@ -42,7 +44,7 @@ func (a Aspell) checkSingle(data string, allowedWords []string) error {
 	var words []string
 	var badWords []string
 
-	checkRes, err := checkWithAspellExec(data)
+	checkRes, err := checkWithAspellExec(data, a.ExtraDicts...)
 	if checkRes != "" {
 		words = strings.Split(checkRes, "\n")
 	}
@@ -267,8 +269,12 @@ func removeKnownHashesFromBody(message string, fullHashes map[string]struct{}) s
 	return parts[0] + "\n\n" + body
 }
 
-func checkWithAspellExec(subject string) (string, error) {
-	cmd := exec.Command("aspell", "--lang=en", "--list")
+func checkWithAspellExec(subject string, extraDicts ...string) (string, error) {
+	args := []string{"--lang=en", "--list"}
+	for _, dict := range extraDicts {
+		args = append(args, "--extra-dicts="+dict)
+	}
+	cmd := exec.Command("aspell", args...)
 	cmd.Stdin = strings.NewReader(subject)
 
 	var stdout, stderr bytes.Buffer

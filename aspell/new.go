@@ -36,6 +36,17 @@ func New(filename string) (Aspell, error) {
 		}
 	}
 
+	// Fetch remote dictionaries if configured
+	if len(aspell.Dictionaries.GitHub) > 0 || len(aspell.Dictionaries.GitLab) > 0 || len(aspell.Dictionaries.URLs) > 0 {
+		fetched, dictErr := fetchDictionaries(aspell.Dictionaries)
+		if dictErr != nil {
+			log.Printf("warning: aspell dictionaries fetch failed: %s", dictErr)
+			return Aspell{}, dictErr
+		}
+		extraAllowedWords = append(extraAllowedWords, fetched.words...)
+		aspell.ExtraDicts = fetched.rwsFiles
+	}
+
 	for i, word := range aspell.AllowedWords {
 		aspell.AllowedWords[i] = strings.ToLower(word)
 	}
@@ -70,6 +81,15 @@ ignore_files:
 allowed:
   - aspell
   - config
+dictionaries:
+  github:
+    - url: "https://github.com/owner/repo/tree/main/path/to/dictionaries"
+      token_env: GITHUB_TOKEN
+  gitlab:
+    - url: "https://gitlab.com/group/project/-/tree/main/path/to/dictionaries"
+      token_env: GITLAB_TOKEN
+  urls:
+    - "https://raw.githubusercontent.com/owner/repo/main/words.txt"
 `
 	}
 	if aspell.RemoteFile.URL != "" {
