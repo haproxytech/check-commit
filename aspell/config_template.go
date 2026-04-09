@@ -6,8 +6,11 @@ import (
 )
 
 // configTemplate is the full .aspell.yml with all options commented out and documented.
-const configTemplate = `## Spell check scope: disabled (off), subject (first line only),
-## commit (full commit message), all (commit + file content, default: subject)
+const configTemplate = `## Spell check scope (default: subject)
+##   disabled - spell checking is off
+##   subject  - only check commit message subject (first line)
+##   commit   - check entire commit message (subject + body)
+##   all      - check commit message + all file content
 # mode: disabled | subject | commit | all
 
 ## Minimum word length to spell-check (words shorter than this are skipped, default: 3)
