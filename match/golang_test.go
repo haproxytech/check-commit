@@ -27,6 +27,9 @@ func TestGetImportWordsFromFile(t *testing.T) {
 			"errorf", "println", "Sprintf", "Printf", "Unmarshal", "args",
 			"Getenv", "Errorf", "tt", "yml", "ok", "cmd", "utf", "Atoi",
 			"oauth", "EOF", "exec", "iter",
+			"gomemlimit", "gomaxprocs", "gogc", "godebug", "goflags",
+			"goos", "goarch", "gopath", "goroot", "goproxy",
+			"gocache", "gomodcache", "goprivate", "gotoolchain", "cgo",
 			"strings", "slices", "testing",
 		}},
 		{"test 2", "match.go", []string{
@@ -44,6 +47,9 @@ func TestGetImportWordsFromFile(t *testing.T) {
 			"errorf", "println", "Sprintf", "Printf", "Unmarshal", "args",
 			"Getenv", "Errorf", "tt", "yml", "ok", "cmd", "utf", "Atoi",
 			"oauth", "EOF", "exec", "iter",
+			"gomemlimit", "gomaxprocs", "gogc", "godebug", "goflags",
+			"goos", "goarch", "gopath", "goroot", "goproxy",
+			"gocache", "gomodcache", "goprivate", "gotoolchain", "cgo",
 			"filepath", "path", "strings", "regexp",
 		}},
 	}
