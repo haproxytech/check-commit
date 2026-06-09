@@ -17,6 +17,14 @@ import (
 	"github.com/fatih/camelcase"
 )
 
+// Commit carries the data needed to spell-check a single commit and to
+// report which commit an error came from.
+type Commit struct {
+	Hash    string
+	Subject string
+	Message string
+}
+
 type RemoteFile struct {
 	URL             string `yaml:"url"`
 	URLEnv          string `yaml:"url_env"`
@@ -106,8 +114,8 @@ func (a Aspell) checkSingle(data string, allowedWords []string) error {
 	return nil
 }
 
-func (a Aspell) Check(subjects []string, commitsFull []string, content []map[string]string, junitSuite junit.Interface, gitHashes map[string]struct{}) error {
-	commitsFullData := a.prepareCommits(commitsFull, gitHashes)
+func (a Aspell) Check(commits []Commit, content []map[string]string, junitSuite junit.Interface, gitHashes map[string]struct{}) error {
+	preparedCommits := a.prepareCommits(commits, gitHashes)
 	identifierWords := a.collectIdentifiers(content)
 
 	var response strings.Builder
@@ -115,12 +123,12 @@ func (a Aspell) Check(subjects []string, commitsFull []string, content []map[str
 	case modeDisabled:
 		return nil
 	case modeSubject:
-		a.checkSubjects(subjects, junitSuite, &response)
+		a.checkSubjects(commits, junitSuite, &response)
 	case modeCommit, modeAll:
 		if a.Mode == modeAll {
 			a.checkFiles(content, identifierWords, junitSuite, &response)
 		}
-		a.checkCommitMessages(commitsFullData, identifierWords, junitSuite, &response)
+		a.checkCommitMessages(preparedCommits, identifierWords, junitSuite, &response)
 	}
 
 	if len(response.String()) > 0 {
@@ -129,25 +137,25 @@ func (a Aspell) Check(subjects []string, commitsFull []string, content []map[str
 	return nil
 }
 
-func (Aspell) prepareCommits(commitsFull []string, gitHashes map[string]struct{}) []string {
-	var commitsFullData []string
-	for _, c := range commitsFull {
-		commit := []string{}
-		for l := range strings.SplitSeq(c, "\n") {
-			c2 := strings.TrimSpace(l)
-			if isSignatureLine(c2) {
+// prepareCommits strips signature lines and known hash references from each
+// commit message body, preserving the hash/subject for error reporting.
+func (Aspell) prepareCommits(commits []Commit, gitHashes map[string]struct{}) []Commit {
+	prepared := make([]Commit, 0, len(commits))
+	for _, c := range commits {
+		lines := []string{}
+		for l := range strings.SplitSeq(c.Message, "\n") {
+			if isSignatureLine(strings.TrimSpace(l)) {
 				continue
 			}
-			commit = append(commit, l)
+			lines = append(lines, l)
 		}
-		commitsFullData = append(commitsFullData, strings.Join(commit, "\n"))
-	}
-	if len(gitHashes) > 0 {
-		for i, c := range commitsFullData {
-			commitsFullData[i] = removeKnownHashesFromBody(c, gitHashes)
+		c.Message = strings.Join(lines, "\n")
+		if len(gitHashes) > 0 {
+			c.Message = removeKnownHashesFromBody(c.Message, gitHashes)
 		}
+		prepared = append(prepared, c)
 	}
-	return commitsFullData
+	return prepared
 }
 
 func isSignatureLine(line string) bool {
@@ -233,12 +241,12 @@ func (a Aspell) collectIdentifiers(content []map[string]string) []string {
 	return identifierWords
 }
 
-func (a Aspell) checkSubjects(subjects []string, junitSuite junit.Interface, response *strings.Builder) {
-	for _, subject := range subjects {
-		if err := a.checkSingle(subject, []string{}); err != nil {
+func (a Aspell) checkSubjects(commits []Commit, junitSuite junit.Interface, response *strings.Builder) {
+	for _, c := range commits {
+		if err := a.checkSingle(c.Subject, []string{}); err != nil {
 			junitSuite.AddMessageFailed("commit message", "aspell check failed", err.Error())
-			log.Println("commit message", err.Error())
-			_, _ = fmt.Fprintf(response, "%s\n", err)
+			log.Printf("commit %s subject %q %s", c.Hash, c.Subject, err.Error())
+			_, _ = fmt.Fprintf(response, "commit %s %q: %s\n", c.Hash, c.Subject, err)
 		}
 	}
 }
@@ -272,20 +280,20 @@ func (a Aspell) checkFiles(content []map[string]string, identifierWords []string
 	}
 }
 
-func (a Aspell) checkCommitMessages(commitsFullData []string, identifierWords []string, junitSuite junit.Interface, response *strings.Builder) {
-	for _, msg := range commitsFullData {
-		parts := strings.SplitN(msg, "\n\n", 2)
+func (a Aspell) checkCommitMessages(commits []Commit, identifierWords []string, junitSuite junit.Interface, response *strings.Builder) {
+	for _, c := range commits {
+		parts := strings.SplitN(c.Message, "\n\n", 2)
 		subject := parts[0]
 		if err := a.checkSingle(subject, []string{}); err != nil {
 			junitSuite.AddMessageFailed("commit message", "aspell check failed", err.Error())
-			log.Printf("commit %q subject %s", subject, err.Error())
-			_, _ = fmt.Fprintf(response, "%s\n", err)
+			log.Printf("commit %s subject %q %s", c.Hash, subject, err.Error())
+			_, _ = fmt.Fprintf(response, "commit %s %q: %s\n", c.Hash, subject, err)
 		}
 		if len(parts) > 1 {
 			if err := a.checkSingle(parts[1], identifierWords); err != nil {
 				junitSuite.AddMessageFailed("commit message", "aspell check failed", err.Error())
-				log.Printf("commit %q body %s", subject, err.Error())
-				_, _ = fmt.Fprintf(response, "%s\n", err)
+				log.Printf("commit %s body %q %s", c.Hash, subject, err.Error())
+				_, _ = fmt.Fprintf(response, "commit %s %q (body): %s\n", c.Hash, subject, err)
 			}
 		}
 	}

@@ -36,7 +36,7 @@ func main() {
 			os.Exit(0)
 		case "init":
 			if err := aspell.Init(".aspell.yml"); err != nil {
-				fmt.Fprintf(os.Stderr, "error: %s\n", err)
+				_, _ = fmt.Fprintf(os.Stderr, "error: %s\n", err)
 				os.Exit(1)
 			}
 			fmt.Println(".aspell.yml created")
@@ -106,14 +106,14 @@ func start(junitSuite junit.Interface) {
 		return
 	}
 
-	subjects, messages, content, err := getCommitData(gitEnv, junitSuite)
+	commits, content, err := getCommitData(gitEnv, junitSuite)
 	if err != nil {
 		log.Printf("error getting commit data: %s", err)
 		exitCode = 1
 		return
 	}
 
-	if err := commitPolicy.CheckSubjectList(subjects, junitSuite); err != nil {
+	if err := commitPolicy.CheckSubjectList(commits, junitSuite); err != nil {
 		junitSuite.AddMessageFailed("commit subject check", "commit subject policy violation", commitPolicy.HelpText)
 		log.Printf("%s\n", commitPolicy.HelpText)
 		exitCode = 1
@@ -122,7 +122,7 @@ func start(junitSuite junit.Interface) {
 
 	gitHashes := getGitHashes(repoPath)
 
-	err = aspellCheck.Check(subjects, messages, content, junitSuite, gitHashes)
+	err = aspellCheck.Check(commits, content, junitSuite, gitHashes)
 	if err != nil {
 		log.Print("encountered one or more commit message spelling errors")
 		// log.Fatalf("%s\n", err)

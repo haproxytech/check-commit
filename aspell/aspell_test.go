@@ -1,6 +1,7 @@
 package aspell
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/haproxytech/check-commit/v5/junit"
@@ -33,6 +34,22 @@ func Test_checkWithAspell(t *testing.T) {
 				t.Errorf("checkWithAspell() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})
+	}
+}
+
+func Test_checkSubjects_reportsOffendingSubject(t *testing.T) {
+	a := Aspell{Mode: modeSubject, MinLength: 3}
+	subject := "BUG/MEDIUM: config: add default locatoin of path"
+	hash := "ac527f5a"
+
+	var response strings.Builder
+	a.checkSubjects([]Commit{{Hash: hash, Subject: subject}}, &junit.JunitSuiteDummy{}, &response)
+
+	if !strings.Contains(response.String(), subject) {
+		t.Errorf("checkSubjects() response = %q, want it to contain offending subject %q", response.String(), subject)
+	}
+	if !strings.Contains(response.String(), hash) {
+		t.Errorf("checkSubjects() response = %q, want it to contain commit hash %q", response.String(), hash)
 	}
 }
 
@@ -96,9 +113,8 @@ func TestAspell_Check(t *testing.T) {
 		HelpText     string
 	}
 	type args struct {
-		subjects    []string
-		commitsFull []string
-		content     []map[string]string
+		commits []Commit
+		content []map[string]string
 	}
 	tests := []struct {
 		name    string
@@ -115,9 +131,11 @@ func TestAspell_Check(t *testing.T) {
 			HelpText:     "test",
 		},
 		args{
-			subjects:    []string{"BUG/MEDIUM: config: add default location of path to the configuration file"},
-			commitsFull: []string{"   Signed-off-by: Author: A locatoin <al@al.al>"},
-			content:     []map[string]string{{"test": "test"}},
+			commits: []Commit{{
+				Subject: "BUG/MEDIUM: config: add default location of path to the configuration file",
+				Message: "   Signed-off-by: Author: A locatoin <al@al.al>",
+			}},
+			content: []map[string]string{{"test": "test"}},
 		},
 		false,
 	}, {
@@ -130,9 +148,14 @@ func TestAspell_Check(t *testing.T) {
 			HelpText:     "test",
 		},
 		args{
-			subjects:    []string{"BUG/MEDIUM: config: add default location of path to the configuration file"},
-			commitsFull: []string{"mitsake", "   Signed-off-by: Author: A locatoin <al@al.al>"},
-			content:     []map[string]string{{"test": "test"}},
+			commits: []Commit{
+				{Subject: "mitsake", Message: "mitsake"},
+				{
+					Subject: "BUG/MEDIUM: config: add default location of path to the configuration file",
+					Message: "   Signed-off-by: Author: A locatoin <al@al.al>",
+				},
+			},
+			content: []map[string]string{{"test": "test"}},
 		},
 		true,
 	}, {
@@ -145,9 +168,11 @@ func TestAspell_Check(t *testing.T) {
 			HelpText:     "test",
 		},
 		args{
-			subjects:    []string{"BUG/MEDIUM: config: add default location of path to the configuration file"},
-			commitsFull: []string{"some commit info\n\n   Signed-off-by: Author: A locatoin <al@al.al>"},
-			content:     []map[string]string{{"test": "test"}},
+			commits: []Commit{{
+				Subject: "BUG/MEDIUM: config: add default location of path to the configuration file",
+				Message: "some commit info\n\n   Signed-off-by: Author: A locatoin <al@al.al>",
+			}},
+			content: []map[string]string{{"test": "test"}},
 		},
 		false,
 	}}
@@ -160,7 +185,7 @@ func TestAspell_Check(t *testing.T) {
 				AllowedWords: tt.fields.AllowedWords,
 				HelpText:     tt.fields.HelpText,
 			}
-			if err := a.Check(tt.args.subjects, tt.args.commitsFull, tt.args.content, &junit.JunitSuiteDummy{}, nil); (err != nil) != tt.wantErr {
+			if err := a.Check(tt.args.commits, tt.args.content, &junit.JunitSuiteDummy{}, nil); (err != nil) != tt.wantErr {
 				t.Errorf("Aspell.Check() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})

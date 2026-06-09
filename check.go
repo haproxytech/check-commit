@@ -17,6 +17,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/google/go-github/v56/github"
+	"github.com/haproxytech/check-commit/v5/aspell"
 	"github.com/haproxytech/check-commit/v5/junit"
 	gitlab "gitlab.com/gitlab-org/api/client-go"
 
@@ -278,7 +279,7 @@ func LoadCommitPolicy(filename string) (CommitPolicyConfig, error) {
 	return commitPolicy, nil
 }
 
-func getGithubCommitData(junitSuite junit.Interface) ([]string, []string, []map[string]string, error) {
+func getGithubCommitData(junitSuite junit.Interface) ([]aspell.Commit, []map[string]string, error) {
 	token := getAPIToken("GITHUB_TOKEN")
 	repo := os.Getenv("GITHUB_REPOSITORY")
 	ref := os.Getenv("GITHUB_REF")
@@ -296,7 +297,7 @@ func getGithubCommitData(junitSuite junit.Interface) ([]string, []string, []map[
 		repoSlice := strings.SplitN(repo, "/", 2)
 		if len(repoSlice) < 2 {
 			junitSuite.AddMessageFailed("", "error fetching owner and project from repo", fmt.Sprintf("invalid repository format: %s", repo))
-			return nil, nil, nil, fmt.Errorf("error fetching owner and project from repo %s", repo)
+			return nil, nil, fmt.Errorf("error fetching owner and project from repo %s", repo)
 		}
 		owner := repoSlice[0]
 		project := repoSlice[1]
@@ -304,22 +305,21 @@ func getGithubCommitData(junitSuite junit.Interface) ([]string, []string, []map[
 		refSlice := strings.SplitN(ref, "/", 4)
 		if len(refSlice) < 3 {
 			junitSuite.AddMessageFailed("", "error fetching PR number from ref", fmt.Sprintf("invalid ref format: %s", ref))
-			return nil, nil, nil, fmt.Errorf("error fetching PR from ref %s", ref)
+			return nil, nil, fmt.Errorf("error fetching PR from ref %s", ref)
 		}
 		prNo, err := strconv.Atoi(refSlice[2])
 		if err != nil {
 			junitSuite.AddMessageFailed("", "error fetching PR number from ref", fmt.Sprintf("invalid pr number: %s", refSlice[2]))
-			return nil, nil, nil, fmt.Errorf("error fetching PR number from %s: %w", refSlice[2], err)
+			return nil, nil, fmt.Errorf("error fetching PR number from %s: %w", refSlice[2], err)
 		}
 
 		commits, _, err := githubClient.PullRequests.ListCommits(ctx, owner, project, prNo, &github.ListOptions{})
 		if err != nil {
 			junitSuite.AddMessageFailed("", "error fetching commits", err.Error())
-			return nil, nil, nil, fmt.Errorf("error fetching commits: %w", err)
+			return nil, nil, fmt.Errorf("error fetching commits: %w", err)
 		}
 
-		subjects := []string{}
-		messages := []string{}
+		commitData := []aspell.Commit{}
 		diffs := []map[string]string{}
 		for _, c := range commits {
 			l := strings.SplitN(c.Commit.GetMessage(), "\n", 3)
@@ -330,19 +330,18 @@ func getGithubCommitData(junitSuite junit.Interface) ([]string, []string, []map[
 			if len(l) > 1 {
 				if l[1] != "" {
 					junitSuite.AddMessageFailed("", "empty line between subject and body is required", fmt.Sprintf("%s %s", hash, l[0]))
-					return nil, nil, nil, fmt.Errorf("empty line between subject and body is required: %s %s", hash, l[0])
+					return nil, nil, fmt.Errorf("empty line between subject and body is required: %s %s", hash, l[0])
 				}
 			}
 			if len(l) > 0 {
 				log.Printf("detected message %s from commit %s", l[0], hash)
-				subjects = append(subjects, l[0])
-				messages = append(messages, c.Commit.GetMessage())
+				commitData = append(commitData, aspell.Commit{Hash: hash, Subject: l[0], Message: c.Commit.GetMessage()})
 			}
 
 			files, _, err := githubClient.PullRequests.ListFiles(ctx, owner, project, prNo, &github.ListOptions{})
 			if err != nil {
 				junitSuite.AddMessageFailed("", "error fetching files", err.Error())
-				return nil, nil, nil, fmt.Errorf("error fetching files: %w", err)
+				return nil, nil, fmt.Errorf("error fetching files: %w", err)
 			}
 			content := map[string]string{}
 			for _, file := range files {
@@ -353,18 +352,18 @@ func getGithubCommitData(junitSuite junit.Interface) ([]string, []string, []map[
 			}
 			diffs = append(diffs, content)
 		}
-		return subjects, messages, diffs, nil
+		return commitData, diffs, nil
 	}
 
 	junitSuite.AddMessageFailed("", "unsupported event name", fmt.Sprintf("unsupported event name: %s", event))
-	return nil, nil, nil, fmt.Errorf("unsupported event name: %s", event)
+	return nil, nil, fmt.Errorf("unsupported event name: %s", event)
 }
 
-func getLocalCommitData(junitSuite junit.Interface) ([]string, []string, []map[string]string, error) {
+func getLocalCommitData(junitSuite junit.Interface) ([]aspell.Commit, []map[string]string, error) {
 	repo, err := git.PlainOpen(".")
 	if err != nil {
 		junitSuite.AddMessageFailed("", "error opening local git repository", err.Error())
-		return nil, nil, nil, err
+		return nil, nil, err
 	}
 
 	iter, err := repo.Log(&git.LogOptions{
@@ -372,11 +371,10 @@ func getLocalCommitData(junitSuite junit.Interface) ([]string, []string, []map[s
 	})
 	if err != nil {
 		junitSuite.AddMessageFailed("", "error getting git log iterator", err.Error())
-		return nil, nil, nil, err
+		return nil, nil, err
 	}
 
-	subjects := []string{}
-	messages := []string{}
+	commitData := []aspell.Commit{}
 	diffs := []map[string]string{}
 	committer := ""
 	var commit1 *object.Commit
@@ -392,7 +390,7 @@ func getLocalCommitData(junitSuite junit.Interface) ([]string, []string, []map[s
 		}
 		if err != nil {
 			junitSuite.AddMessageFailed("", "error iterating through git commits", err.Error())
-			return nil, nil, nil, err
+			return nil, nil, err
 		}
 		if committer == "" {
 			committer = commit.Author.Name
@@ -413,12 +411,11 @@ func getLocalCommitData(junitSuite junit.Interface) ([]string, []string, []map[s
 		if len(l) > 1 {
 			if l[1] != "" {
 				junitSuite.AddMessageFailed("", "empty line between subject and body is required", fmt.Sprintf("%s %s", commitHash, l[0]))
-				return nil, nil, nil, fmt.Errorf("empty line between subject and body is required: %s %s", commitHash, l[0])
+				return nil, nil, fmt.Errorf("empty line between subject and body is required: %s %s", commitHash, l[0])
 			}
 		}
 		if len(l) > 0 {
-			subjects = append(subjects, l[0])
-			messages = append(messages, string(commitBody))
+			commitData = append(commitData, aspell.Commit{Hash: commitHash, Subject: l[0], Message: string(commitBody)})
 		}
 	}
 
@@ -431,7 +428,7 @@ func getLocalCommitData(junitSuite junit.Interface) ([]string, []string, []map[s
 	changes, err := object.DiffTree(tree2, tree1)
 	if err != nil {
 		junitSuite.AddMessageFailed("", "error getting git commit changes", err.Error())
-		return nil, nil, nil, err
+		return nil, nil, err
 	}
 
 	// Print the list of changed files and their content (patch)
@@ -439,7 +436,7 @@ func getLocalCommitData(junitSuite junit.Interface) ([]string, []string, []map[s
 		patch, err := change.Patch()
 		if err != nil {
 			junitSuite.AddMessageFailed("", "error getting git patch", err.Error())
-			return nil, nil, nil, err
+			return nil, nil, err
 		}
 		for _, file := range patch.FilePatches() {
 			chunks := file.Chunks()
@@ -461,7 +458,7 @@ func getLocalCommitData(junitSuite junit.Interface) ([]string, []string, []map[s
 			diffs = append(diffs, map[string]string{change.To.Name: fileChanges.String()})
 		}
 	}
-	return subjects, messages, diffs, nil
+	return commitData, diffs, nil
 }
 
 func cleanGitPatch(patch string) string {
@@ -478,7 +475,7 @@ func cleanGitPatch(patch string) string {
 	return patch
 }
 
-func getGitlabCommitData(junitSuite junit.Interface) ([]string, []string, []map[string]string, error) {
+func getGitlabCommitData(junitSuite junit.Interface) ([]aspell.Commit, []map[string]string, error) {
 	gitlabURL := os.Getenv("CI_API_V4_URL")
 	token := getAPIToken("GITLAB_TOKEN")
 	mri := os.Getenv("CI_MERGE_REQUEST_IID")
@@ -487,28 +484,27 @@ func getGitlabCommitData(junitSuite junit.Interface) ([]string, []string, []map[
 	gitlabClient, err := gitlab.NewClient(token, gitlab.WithBaseURL(gitlabURL))
 	if err != nil {
 		junitSuite.AddMessageFailed("", "failed to create gitlab client", err.Error())
-		return nil, nil, nil, fmt.Errorf("failed to create gitlab client: %w", err)
+		return nil, nil, fmt.Errorf("failed to create gitlab client: %w", err)
 	}
 
 	mrIID, err := strconv.Atoi(mri)
 	if err != nil {
 		junitSuite.AddMessageFailed("", "invalid merge request id", err.Error())
-		return nil, nil, nil, fmt.Errorf("invalid merge request id %s", mri)
+		return nil, nil, fmt.Errorf("invalid merge request id %s", mri)
 	}
 
 	projectID, err := strconv.Atoi(project)
 	if err != nil {
 		junitSuite.AddMessageFailed("", "invalid project id", err.Error())
-		return nil, nil, nil, fmt.Errorf("invalid project id %s", project)
+		return nil, nil, fmt.Errorf("invalid project id %s", project)
 	}
 	commits, _, err := gitlabClient.MergeRequests.GetMergeRequestCommits(projectID, int64(mrIID), &gitlab.GetMergeRequestCommitsOptions{})
 	if err != nil {
 		junitSuite.AddMessageFailed("", "error fetching commits", err.Error())
-		return nil, nil, nil, fmt.Errorf("error fetching commits: %w", err)
+		return nil, nil, fmt.Errorf("error fetching commits: %w", err)
 	}
 
-	subjects := []string{}
-	messages := []string{}
+	commitData := []aspell.Commit{}
 	diffs := []map[string]string{}
 	for _, c := range commits {
 		l := strings.SplitN(c.Message, "\n", 3)
@@ -517,16 +513,15 @@ func getGitlabCommitData(junitSuite junit.Interface) ([]string, []string, []map[
 			if len(l) > 1 {
 				if l[1] != "" {
 					junitSuite.AddMessageFailed("", "empty line between subject and body is required", fmt.Sprintf("%s %s", hash, l[0]))
-					return nil, nil, nil, fmt.Errorf("empty line between subject and body is required: %s %s", hash, l[0])
+					return nil, nil, fmt.Errorf("empty line between subject and body is required: %s %s", hash, l[0])
 				}
 			}
 			log.Printf("detected message %s from commit %s", l[0], hash)
-			subjects = append(subjects, l[0])
-			messages = append(messages, c.Message)
+			commitData = append(commitData, aspell.Commit{Hash: hash, Subject: l[0], Message: c.Message})
 			mrDiffs, _, err := gitlabClient.MergeRequests.ListMergeRequestDiffs(projectID, int64(mrIID), &gitlab.ListMergeRequestDiffsOptions{})
 			if err != nil {
 				junitSuite.AddMessageFailed("", "error fetching commit changes", err.Error())
-				return nil, nil, nil, fmt.Errorf("error fetching commit changes: %w", err)
+				return nil, nil, fmt.Errorf("error fetching commit changes: %w", err)
 			}
 			content := map[string]string{}
 			for _, d := range mrDiffs {
@@ -539,10 +534,10 @@ func getGitlabCommitData(junitSuite junit.Interface) ([]string, []string, []map[
 		}
 	}
 
-	return subjects, messages, diffs, nil
+	return commitData, diffs, nil
 }
 
-func getCommitData(repoEnv string, junitSuite junit.Interface) ([]string, []string, []map[string]string, error) {
+func getCommitData(repoEnv string, junitSuite junit.Interface) ([]aspell.Commit, []map[string]string, error) {
 	if repoEnv == GITHUB {
 		return getGithubCommitData(junitSuite)
 	} else if repoEnv == GITLAB {
@@ -550,18 +545,18 @@ func getCommitData(repoEnv string, junitSuite junit.Interface) ([]string, []stri
 	} else if repoEnv == LOCAL {
 		return getLocalCommitData(junitSuite)
 	}
-	return nil, nil, nil, fmt.Errorf("unrecognized git environment %s", repoEnv)
+	return nil, nil, fmt.Errorf("unrecognized git environment %s", repoEnv)
 }
 
 var ErrSubjectList = errors.New("subjects contain errors")
 
-func (c CommitPolicyConfig) CheckSubjectList(subjects []string, junitSuite junit.Interface) error {
+func (c CommitPolicyConfig) CheckSubjectList(commits []aspell.Commit, junitSuite junit.Interface) error {
 	hasErrors := false
 
-	for _, subject := range subjects {
-		subject = strings.Trim(subject, "'")
+	for _, commit := range commits {
+		subject := strings.Trim(commit.Subject, "'")
 		if err := c.CheckSubject([]byte(subject), junitSuite); err != nil {
-			log.Printf("%s, original subject message '%s'", err, subject)
+			log.Printf("%s, commit %s original subject message '%s'", err, commit.Hash, subject)
 
 			hasErrors = true
 		}
