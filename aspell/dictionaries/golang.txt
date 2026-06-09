@@ -82,6 +82,15 @@ gomodcache
 goprivate
 gotoolchain
 cgo
+godoc
+gofmt
+gofumpt
+govet
+golint
+golangci
+gopls
+goimports
+delve
 tt
 yml
 ok
