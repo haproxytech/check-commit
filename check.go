@@ -102,27 +102,32 @@ func checkSubjectText(subject string, junitSuite junit.Interface) error {
 		junitSuite.AddMessageFailed(ErrSubjectMessageFormat.Error(), "malformatted subject string (trailing or double spaces?)", fmt.Sprintf("subject: %s", subject))
 		return fmt.Errorf(
 			"malformatted subject string (trailing or double spaces?): '%s' (%w)",
-			subject, ErrSubjectMessageFormat)
+			subject, ErrSubjectMessageFormat,
+		)
 	}
 
 	if subjectPartsLen < MINSUBJECTPARTS || subjectPartsLen > MAXSUBJECTPARTS {
 		junitSuite.AddMessageFailed(
 			ErrSubjectMessageFormat.Error(),
 			fmt.Sprintf("subject word count out of bounds [words %d < %d < %d]", MINSUBJECTPARTS, subjectPartsLen, MAXSUBJECTPARTS),
-			fmt.Sprintf("subject: %s", subject))
+			fmt.Sprintf("subject: %s", subject),
+		)
 		return fmt.Errorf(
 			"subject word count out of bounds [words %d < %d < %d] '%s': %w",
-			MINSUBJECTPARTS, subjectPartsLen, MAXSUBJECTPARTS, subjectParts, ErrSubjectMessageFormat)
+			MINSUBJECTPARTS, subjectPartsLen, MAXSUBJECTPARTS, subjectParts, ErrSubjectMessageFormat,
+		)
 	}
 
 	if subjectLen < MINSUBJECTLEN || subjectLen > MAXSUBJECTLEN {
 		junitSuite.AddMessageFailed(
 			ErrSubjectMessageFormat.Error(),
 			fmt.Sprintf("subject length out of bounds [len %d < %d < %d]", MINSUBJECTLEN, subjectLen, MAXSUBJECTLEN),
-			fmt.Sprintf("subject: %s", subject))
+			fmt.Sprintf("subject: %s", subject),
+		)
 		return fmt.Errorf(
 			"subject length out of bounds [len %d < %d < %d] '%s': %w",
-			MINSUBJECTLEN, subjectLen, MAXSUBJECTLEN, subject, ErrSubjectMessageFormat)
+			MINSUBJECTLEN, subjectLen, MAXSUBJECTLEN, subject, ErrSubjectMessageFormat,
+		)
 	}
 
 	return nil

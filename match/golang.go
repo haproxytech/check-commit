@@ -28,7 +28,8 @@ func GetImportWordsFromGoFile(filename string) []string {
 	fileContent := string(data)
 
 	var importWords []string
-	importWords = append(importWords,
+	importWords = append(
+		importWords,
 		"break", "default", "func", "interface", "select",
 		"case", "defer", "go", "map", "struct",
 		"chan", "else", "goto", "package", "switch",
