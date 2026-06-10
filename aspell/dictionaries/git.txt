@@ -13,9 +13,9 @@ branch
 branching
 changelog
 changelogs
+checkout
 cherrypick
 cherrypicked
-checkout
 codeowner
 codeowners
 commitish
@@ -27,7 +27,6 @@ detached
 diff
 diffs
 diverged
-fasforward
 fastforward
 fetch
 fetched
@@ -36,10 +35,10 @@ fixups
 gitattributes
 gitconfig
 gitflow
-gitignore
 githook
 githooks
 github
+gitignore
 gitlab
 gitmodules
 gitops
@@ -62,6 +61,7 @@ pullrequest
 pullrequests
 rebase
 rebased
+rebases
 rebasing
 reflog
 refname
@@ -88,6 +88,7 @@ unmerged
 unpushed
 unstage
 unstaged
+untagged
 untracked
 upstream
 upstreamed

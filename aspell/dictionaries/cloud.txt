@@ -1,5 +1,6 @@
 # Cloud, containers, Kubernetes, and infrastructure terms
 ansible
+asg
 autoscale
 autoscaler
 autoscaling
@@ -32,8 +33,8 @@ datacenters
 deprovisioning
 devstack
 dockerd
-dockerfiles
 dockerfile
+dockerfiles
 dockerize
 dynamodb
 ebs
@@ -50,6 +51,7 @@ flannel
 gce
 gcp
 gke
+godaddy
 grafana
 grpc
 haproxy
@@ -63,6 +65,7 @@ hypervisors
 iaas
 iam
 ingresses
+irsa
 istio
 k3s
 k8s
@@ -76,6 +79,7 @@ kubelet
 kubernetes
 letsencrypt
 linkerd
+liveness
 lxc
 metallb
 minikube
@@ -113,17 +117,18 @@ saas
 schedulable
 sidecar
 sidecars
-slos
 sla
 slas
 sli
 slis
 slo
+slos
 sns
 sqs
 ssm
 statefulset
 statefulsets
+sts
 subresource
 terraform
 terragrunt

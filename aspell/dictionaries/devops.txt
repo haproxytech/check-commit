@@ -1,10 +1,12 @@
 # DevOps, CI/CD, and tooling terms
+aider
 ansible
 argocd
 artifactory
 bazel
 betteralign
 buildkit
+buildx
 canary
 changelog
 changelogs
@@ -18,7 +20,9 @@ cppcheck
 crowdsec
 datadog
 dependabot
+deployer
 distroless
+dockerhub
 dryrun
 dynatrace
 eslint
@@ -35,12 +39,12 @@ grafana
 greenfield
 grype
 hadolint
-hivis
 hashicorp
+hivis
 hotfix
 hotfixes
-jfrog
 jenkins
+jfrog
 jira
 kibana
 kustomize
@@ -49,6 +53,8 @@ linter
 linters
 linting
 logstash
+lts
+mcp
 mergeable
 monorepo
 monorepos
@@ -73,6 +79,7 @@ pruning
 pullrequest
 rebased
 rebasing
+releaser
 remediate
 remediation
 renovate
@@ -90,8 +97,6 @@ scriptable
 semgrep
 semver
 shellcheck
-taskfile
-testdox
 shipit
 sla
 sonarqube
@@ -105,8 +110,11 @@ sumo
 syft
 tarball
 tarballs
+taskfile
+testdox
 toolset
 trivy
+ubi
 uncommented
 undeploy
 unmerged

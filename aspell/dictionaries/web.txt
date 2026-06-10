@@ -1,7 +1,10 @@
 # Web technologies and protocols terms
 ajax
 api
+apikey
+apikeys
 apis
+apiurl
 auth
 authn
 authz
@@ -20,10 +23,12 @@ dom
 endpoint
 endpoints
 etag
+etags
 favicon
 frontend
 frontends
 gzip
+har
 hmac
 htaccess
 html
@@ -64,7 +69,6 @@ rpc
 saml
 sanitize
 sanitized
-sse
 scss
 serializer
 serializers
