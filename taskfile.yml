@@ -86,6 +86,12 @@ tasks:
     cmds:
       - "$(check-go-tool {{.GOVULNCHECK}}) -show verbose ./..."
 
+  update-x:
+    desc: 'update golang.org/x/ dependencies'
+    cmds:
+      - go get -u golang.org/x/...
+      - task: tidy
+
 # internal
 
   ensure-check-go-tool:
