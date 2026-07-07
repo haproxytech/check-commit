@@ -4,7 +4,7 @@ version: "3"
 vars:
   BETTERALIGN: github.com/dkorunic/betteralign/cmd/betteralign@v0.13.0
   STATICCHECK: honnef.co/go/tools/cmd/staticcheck@v0.7.0
-  GOVULNCHECK: golang.org/x/vuln/cmd/govulncheck@v1.1.4
+  GOVULNCHECK: golang.org/x/vuln/cmd/govulncheck@v1.5.0
   GOFUMPT: mvdan.cc/gofumpt@v0.10.0
   REVIVE: github.com/mgechev/revive@v1.15.0
   GOTESTSUM: gotest.tools/gotestsum@v1.13.0
@@ -90,6 +90,12 @@ tasks:
     desc: 'update golang.org/x/ dependencies'
     cmds:
       - go get -u golang.org/x/...
+      - task: tidy
+
+  update-deps:
+    desc: 'update direct dependencies to latest versions'
+    cmds:
+      - go get $(go list -m -f '{{`{{if and (not .Indirect) (not .Main)}}{{.Path}}{{end}}`}}' all)
       - task: tidy
 
 # internal
