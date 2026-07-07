@@ -74,6 +74,20 @@ func New(filename string) (Aspell, error) {
 		return Aspell{}, fmt.Errorf("invalid identifier_scope: %s", aspell.IdentifierScope)
 	}
 
+	aspell.RepoWords = map[string]struct{}{}
+	if aspell.Mode != modeDisabled {
+		if !aspell.NoManifestWords {
+			for _, w := range collectManifestWords(".") {
+				aspell.RepoWords[w] = struct{}{}
+			}
+		}
+		if !aspell.NoPathWords {
+			for _, w := range collectPathWords(".") {
+				aspell.RepoWords[w] = struct{}{}
+			}
+		}
+	}
+
 	log.Printf("aspell mode set to %s", aspell.Mode)
 	if fileExists {
 		aspell.HelpText = `aspell can be configured with .aspell.yml file.
@@ -84,6 +98,8 @@ content example:
 mode: subject
 min_length: 3
 no_ignore_identifiers: false
+no_manifest_words: false
+no_path_words: false
 ignore_files:
   - 'gen/*'
 allowed:

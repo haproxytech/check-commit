@@ -19,6 +19,13 @@ const configTemplate = `## Spell check scope (default: subject)
 ## If true, code identifiers will NOT be excluded from spell check
 # no_ignore_identifiers: false
 
+## If true, dependency names from manifest files (go.mod, package.json,
+## requirements.txt, Cargo.toml) will NOT be auto-allowed
+# no_manifest_words: false
+
+## If true, words from repository path names will NOT be auto-allowed
+# no_path_words: false
+
 ## Where to collect code identifiers from to exclude as allowed words (default: files)
 ##   diff  - only from the diff content (added lines)
 ##   files - from the full content of changed files
