@@ -22,6 +22,7 @@ import (
 	gitlab "gitlab.com/gitlab-org/api/client-go"
 
 	git "github.com/go-git/go-git/v5"
+	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/format/diff"
 	"github.com/go-git/go-git/v5/plumbing/object"
 	"golang.org/x/oauth2"
@@ -371,6 +372,137 @@ func getLocalCommitData(junitSuite junit.Interface) ([]aspell.Commit, []map[stri
 		return nil, nil, err
 	}
 
+	if published := remoteReachableHashes(repo); len(published) > 0 {
+		return getFreshLocalCommitData(repo, published, junitSuite)
+	}
+
+	log.Print("no remote-tracking refs found, falling back to author-change heuristic")
+
+	return getAuthorLocalCommitData(repo, junitSuite)
+}
+
+const upstreamRefPrefix = "refs/remotes/upstream/"
+
+// remoteReachableHashes collects all commits reachable from remote-tracking
+// refs, i.e. commits already published as of the last fetch. When an
+// 'upstream' remote exists it is the sole boundary, so commits pushed only
+// to a fork (origin) are still checked.
+func remoteReachableHashes(repo *git.Repository) map[plumbing.Hash]bool {
+	published := map[plumbing.Hash]bool{}
+
+	refs, err := repo.References()
+	if err != nil {
+		return published
+	}
+
+	remoteRefs := []*plumbing.Reference{}
+	hasUpstream := false
+	_ = refs.ForEach(func(ref *plumbing.Reference) error {
+		if !ref.Name().IsRemote() {
+			return nil
+		}
+		if strings.HasPrefix(ref.Name().String(), upstreamRefPrefix) {
+			hasUpstream = true
+		}
+		remoteRefs = append(remoteRefs, ref)
+		return nil
+	})
+
+	if hasUpstream {
+		log.Print("using 'upstream' remote as published-commit boundary")
+	}
+
+	for _, ref := range remoteRefs {
+		if hasUpstream && !strings.HasPrefix(ref.Name().String(), upstreamRefPrefix) {
+			continue
+		}
+		commit, err := repo.CommitObject(ref.Hash())
+		if err != nil { // not a commit (e.g. dangling ref), skip
+			continue
+		}
+		iter := object.NewCommitPreorderIter(commit, published, nil)
+		_ = iter.ForEach(func(c *object.Commit) error {
+			published[c.Hash] = true
+			return nil
+		})
+	}
+
+	return published
+}
+
+// getFreshLocalCommitData checks only commits reachable from HEAD but not
+// from any remote-tracking ref (git rev-list HEAD --not --remotes).
+func getFreshLocalCommitData(repo *git.Repository, published map[plumbing.Hash]bool, junitSuite junit.Interface) ([]aspell.Commit, []map[string]string, error) {
+	head, err := repo.Head()
+	if err != nil {
+		junitSuite.AddMessageFailed("", "error reading git HEAD", err.Error())
+		return nil, nil, err
+	}
+	headCommit, err := repo.CommitObject(head.Hash())
+	if err != nil {
+		junitSuite.AddMessageFailed("", "error reading git HEAD commit", err.Error())
+		return nil, nil, err
+	}
+
+	if published[headCommit.Hash] {
+		log.Print("no local commits ahead of remote-tracking refs, nothing to check")
+		return []aspell.Commit{}, []map[string]string{}, nil
+	}
+
+	fresh := []*object.Commit{}
+	iter := object.NewCommitPreorderIter(headCommit, published, nil)
+	err = iter.ForEach(func(c *object.Commit) error {
+		fresh = append(fresh, c)
+		return nil
+	})
+	if err != nil {
+		junitSuite.AddMessageFailed("", "error iterating through git commits", err.Error())
+		return nil, nil, err
+	}
+
+	log.Printf("checking %d local commit(s) not present on any remote", len(fresh))
+
+	commitData := []aspell.Commit{}
+	for _, commit := range fresh {
+		aspellCommit, err := toAspellCommit(commit, junitSuite)
+		if err != nil {
+			return nil, nil, err
+		}
+		commitData = append(commitData, aspellCommit)
+	}
+
+	// diff base: first published parent of a fresh commit
+	var base *object.Commit
+	for _, c := range fresh {
+		for _, p := range c.ParentHashes {
+			if published[p] {
+				base, err = repo.CommitObject(p)
+				if err != nil {
+					junitSuite.AddMessageFailed("", "error reading git commit", err.Error())
+					return nil, nil, err
+				}
+				break
+			}
+		}
+		if base != nil {
+			break
+		}
+	}
+	if base == nil { // no published ancestor, diff against oldest fresh commit
+		base = fresh[len(fresh)-1]
+	}
+
+	diffs, err := localTreeDiffs(base, headCommit, junitSuite)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return commitData, diffs, nil
+}
+
+// getAuthorLocalCommitData collects commits from HEAD until the author name
+// changes; used when no remote-tracking refs exist.
+func getAuthorLocalCommitData(repo *git.Repository, junitSuite junit.Interface) ([]aspell.Commit, []map[string]string, error) {
 	iter, err := repo.Log(&git.LogOptions{
 		Order: git.LogOrderCommitterTime,
 	})
@@ -380,7 +512,6 @@ func getLocalCommitData(junitSuite junit.Interface) ([]aspell.Commit, []map[stri
 	}
 
 	commitData := []aspell.Commit{}
-	diffs := []map[string]string{}
 	committer := ""
 	var commit1 *object.Commit
 	var oldestCommit *object.Commit
@@ -407,41 +538,56 @@ func getLocalCommitData(junitSuite junit.Interface) ([]aspell.Commit, []map[stri
 			break
 		}
 
-		commitBody := commit.Message
-		l := strings.SplitN(string(commitBody), "\n", 3)
-		commitHash := commit.Hash.String()
-		if len(commitHash) > 8 {
-			commitHash = commitHash[:8]
+		aspellCommit, err := toAspellCommit(commit, junitSuite)
+		if err != nil {
+			return nil, nil, err
 		}
-		if len(l) > 1 {
-			if l[1] != "" {
-				junitSuite.AddMessageFailed("", "empty line between subject and body is required", fmt.Sprintf("%s %s", commitHash, l[0]))
-				return nil, nil, fmt.Errorf("empty line between subject and body is required: %s %s", commitHash, l[0])
-			}
-		}
-		if len(l) > 0 {
-			commitData = append(commitData, aspell.Commit{Hash: commitHash, Subject: l[0], Message: string(commitBody)})
-		}
+		commitData = append(commitData, aspellCommit)
 	}
 
-	// Get the changes (diff) between the two commits
-	tree1, _ := commit1.Tree()
 	if commit2 == nil {
 		commit2 = oldestCommit
 	}
-	tree2, _ := commit2.Tree()
-	changes, err := object.DiffTree(tree2, tree1)
+
+	diffs, err := localTreeDiffs(commit2, commit1, junitSuite)
 	if err != nil {
-		junitSuite.AddMessageFailed("", "error getting git commit changes", err.Error())
 		return nil, nil, err
 	}
 
-	// Print the list of changed files and their content (patch)
+	return commitData, diffs, nil
+}
+
+func toAspellCommit(commit *object.Commit, junitSuite junit.Interface) (aspell.Commit, error) {
+	l := strings.SplitN(commit.Message, "\n", 3)
+	commitHash := commit.Hash.String()
+	if len(commitHash) > 8 {
+		commitHash = commitHash[:8]
+	}
+	if len(l) > 1 && l[1] != "" {
+		junitSuite.AddMessageFailed("", "empty line between subject and body is required", fmt.Sprintf("%s %s", commitHash, l[0]))
+		return aspell.Commit{}, fmt.Errorf("empty line between subject and body is required: %s %s", commitHash, l[0])
+	}
+
+	return aspell.Commit{Hash: commitHash, Subject: l[0], Message: commit.Message}, nil
+}
+
+// localTreeDiffs returns per-file added content between two commits.
+func localTreeDiffs(from, to *object.Commit, junitSuite junit.Interface) ([]map[string]string, error) {
+	diffs := []map[string]string{}
+
+	tree1, _ := to.Tree()
+	tree2, _ := from.Tree()
+	changes, err := object.DiffTree(tree2, tree1)
+	if err != nil {
+		junitSuite.AddMessageFailed("", "error getting git commit changes", err.Error())
+		return nil, err
+	}
+
 	for _, change := range changes {
 		patch, err := change.Patch()
 		if err != nil {
 			junitSuite.AddMessageFailed("", "error getting git patch", err.Error())
-			return nil, nil, err
+			return nil, err
 		}
 		for _, file := range patch.FilePatches() {
 			chunks := file.Chunks()
@@ -463,7 +609,8 @@ func getLocalCommitData(junitSuite junit.Interface) ([]aspell.Commit, []map[stri
 			diffs = append(diffs, map[string]string{change.To.Name: fileChanges.String()})
 		}
 	}
-	return commitData, diffs, nil
+
+	return diffs, nil
 }
 
 func cleanGitPatch(patch string) string {
