@@ -33,6 +33,7 @@ ignore_files:
 allowed:
   - mri
   - iid
+  - rws
 
 ## Fetch an additional allowed-word list from a JSON API endpoint
 # remote_file:

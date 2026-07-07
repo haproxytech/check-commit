@@ -34,20 +34,20 @@ type RemoteFile struct {
 }
 
 type Aspell struct {
-	RemoteFile          RemoteFile       `yaml:"remote_file"`
-	Mode                mode             `yaml:"mode"`
-	HelpText            string           `yaml:"-"`
-	IdentifierScope     identifierScope  `yaml:"identifier_scope"`
-	Dictionaries        DictionaryConfig `yaml:"dictionaries"`
-	IgnoreFiles         []string         `yaml:"ignore_files"`
-	AllowedWords        []string         `yaml:"allowed"`
-	ExtraDicts          []string         `yaml:"-"` // paths to downloaded .rws files for aspell --extra-dicts
-	MinLength           int              `yaml:"min_length"`
-	NoIgnoreIdentifiers bool             `yaml:"no_ignore_identifiers"`
-	NoManifestWords     bool             `yaml:"no_manifest_words"`
-	NoPathWords         bool             `yaml:"no_path_words"`
 	// RepoWords holds words derived from dependency manifests and repo paths.
-	RepoWords map[string]struct{} `yaml:"-"`
+	RepoWords           map[string]struct{} `yaml:"-"`
+	RemoteFile          RemoteFile          `yaml:"remote_file"`
+	Mode                mode                `yaml:"mode"`
+	HelpText            string              `yaml:"-"`
+	IdentifierScope     identifierScope     `yaml:"identifier_scope"`
+	Dictionaries        DictionaryConfig    `yaml:"dictionaries"`
+	IgnoreFiles         []string            `yaml:"ignore_files"`
+	AllowedWords        []string            `yaml:"allowed"`
+	ExtraDicts          []string            `yaml:"-"` // paths to downloaded .rws files for aspell --extra-dicts
+	MinLength           int                 `yaml:"min_length"`
+	NoIgnoreIdentifiers bool                `yaml:"no_ignore_identifiers"`
+	NoManifestWords     bool                `yaml:"no_manifest_words"`
+	NoPathWords         bool                `yaml:"no_path_words"`
 }
 
 var (
