@@ -7,9 +7,11 @@ require (
 	github.com/go-git/go-git/v5 v5.19.1
 	github.com/google/go-github/v56 v56.0.0
 	github.com/joho/godotenv v1.5.1
+	github.com/lmittmann/tint v1.1.3
 	github.com/oktalz/junit-report v0.9.1
 	gitlab.com/gitlab-org/api/client-go v1.46.0
 	golang.org/x/oauth2 v0.36.0
+	golang.org/x/term v0.44.0
 	gopkg.in/yaml.v3 v3.0.1
 )
 

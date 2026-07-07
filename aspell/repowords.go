@@ -1,7 +1,7 @@
 package aspell
 
 import (
-	"log"
+	"log/slog"
 	"os"
 	"path/filepath"
 
@@ -29,7 +29,7 @@ func collectManifestWords(dir string) []string {
 		}
 		extracted := m.extract(string(data))
 		words = append(words, extracted...)
-		log.Printf("aspell: collected %d words from %s", len(extracted), m.name)
+		slog.Info("collected words from manifest", "count", len(extracted), "file", m.name)
 	}
 	return words
 }
@@ -54,6 +54,6 @@ func collectPathWords(root string) []string {
 		return nil
 	})
 	words := match.GetPathWords(paths)
-	log.Printf("aspell: collected %d words from %d repository paths", len(words), len(paths))
+	slog.Info("collected words from repository paths", "count", len(words), "paths", len(paths))
 	return words
 }

@@ -8,7 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"os"
 	"regexp"
 	"slices"
@@ -147,7 +147,7 @@ func (c CommitPolicyConfig) CheckPatchTypes(tag, severity string, patchTypeName 
 			}
 
 			if c.PatchTypes[patchTypeName].Scope == "" {
-				log.Printf("unable to verify severity %s without definitions", severity)
+				slog.Warn("unable to verify severity without definitions", "severity", severity)
 
 				break // subject has severity but there is no definition to verify it
 			}
@@ -168,7 +168,7 @@ func (c CommitPolicyConfig) CheckSubject(rawSubject []byte, junitSuite junit.Int
 	for i := 0; i < len(rawSubject); i++ {
 		if rawSubject[i] > unicode.MaxASCII {
 			junitSuite.AddMessageFailed("", "non-ascii characters detected in commit subject", fmt.Sprintf("subject: %s", rawSubject))
-			log.Printf("non-ascii characters detected in in subject:\n%s", hex.Dump(rawSubject))
+			slog.Error("non-ascii characters detected in subject", "dump", hex.Dump(rawSubject))
 
 			return fmt.Errorf("non-ascii characters in commit subject: %w", ErrTagScope)
 		}
@@ -191,7 +191,7 @@ func (c CommitPolicyConfig) CheckSubject(rawSubject []byte, junitSuite junit.Int
 		if len(submatch) == 0 { // no match
 			if !tagOK {
 				junitSuite.AddMessageFailed("", "invalid or missing tag/severity in commit message", fmt.Sprintf("subject: %s", rawSubject))
-				log.Printf("unable to find match in %s\n", rawSubject)
+				slog.Error("unable to find tag match in subject", "subject", string(rawSubject))
 
 				return fmt.Errorf("invalid tag or no tag found, searched through [%s]: %w",
 					strings.Join(tagAlternative.PatchTypes, ", "), ErrTagScope)
@@ -217,7 +217,7 @@ func (c CommitPolicyConfig) CheckSubject(rawSubject []byte, junitSuite junit.Int
 
 		if !tagOK {
 			junitSuite.AddMessageFailed("", "invalid tag/severity in commit message", fmt.Sprintf("subject: %s", rawSubject))
-			log.Printf("unable to find match in %s\n", candidates)
+			slog.Error("unable to find valid tag among candidates", "candidates", candidates)
 
 			return fmt.Errorf("invalid tag or no tag found, searched through [%s]: %w",
 				strings.Join(tagAlternative.PatchTypes, ", "), ErrTagScope)
@@ -263,16 +263,14 @@ func readGitEnvironment() (string, error) {
 
 	url := os.Getenv("GITHUB_API_URL")
 	if url != "" {
-		log.Printf("detected %s environment\n", GITHUB)
-		log.Printf("using api url '%s'\n", url)
+		slog.Info("detected environment", "env", GITHUB, "url", url)
 
 		return GITHUB, nil
 	}
 
 	url = os.Getenv("CI_API_V4_URL")
 	if url != "" {
-		log.Printf("detected %s environment\n", GITLAB)
-		log.Printf("using api url '%s'\n", url)
+		slog.Info("detected environment", "env", GITLAB, "url", url)
 
 		return GITLAB, nil
 	}
@@ -286,7 +284,7 @@ func LoadCommitPolicy(filename string) (CommitPolicyConfig, error) {
 	var config string
 
 	if data, err := os.ReadFile(filename); err != nil {
-		log.Printf("warning: using built-in fallback configuration with HAProxy defaults (%s)", err)
+		slog.Info("using built-in fallback configuration with HAProxy defaults", "err", err)
 
 		config = defaultConfig
 	} else {
@@ -391,7 +389,7 @@ func rangeData(base, head *object.Commit, junitSuite junit.Interface) ([]aspell.
 		}
 	}
 
-	log.Printf("checking %d commit(s) in range from local git data", len(fresh))
+	slog.Info("checking commits from local git data", "count", len(fresh))
 
 	diffs, err := perCommitDiffs(fresh)
 	if err != nil {
@@ -416,18 +414,18 @@ func rangeData(base, head *object.Commit, junitSuite junit.Interface) ([]aspell.
 func gitNativeCIData(shas func() (string, string, error), api string, junitSuite junit.Interface) ([]aspell.Commit, []aspell.CommitDiff, bool, error) {
 	base, head, err := shas()
 	if err != nil {
-		log.Printf("warning: cannot use local git data (%s), falling back to %s API", err, api)
+		slog.Warn("cannot use local git data, falling back to API", "api", api, "err", err)
 		return nil, nil, false, nil
 	}
 	baseCommit, headCommit, err := resolveRange(".", base, head)
 	if err != nil {
-		log.Printf("warning: %s, falling back to %s API", err, api)
+		slog.Warn("falling back to API", "api", api, "err", err)
 		return nil, nil, false, nil
 	}
 	commits, diffs, err := rangeData(baseCommit, headCommit, junitSuite)
 	if err != nil {
 		if errors.Is(err, errLocalGitUnavailable) {
-			log.Printf("warning: %s, falling back to %s API", err, api)
+			slog.Warn("falling back to API", "api", api, "err", err)
 			return nil, nil, false, nil
 		}
 		return nil, nil, true, err // policy violation, fatal
@@ -502,7 +500,7 @@ func githubAPICommitData(ctx context.Context, githubClient *github.Client, repo,
 			return nil, nil, fmt.Errorf("empty line between subject and body is required: %s %s", hash, l[0])
 		}
 		if len(l) > 0 {
-			log.Printf("detected message %s from commit %s", l[0], hash)
+			slog.Info("detected commit message", "commit", hash, "subject", l[0])
 			commitData = append(commitData, aspell.Commit{Hash: hash, Subject: l[0], Message: c.Commit.GetMessage()})
 		}
 	}
@@ -520,7 +518,7 @@ func getLocalCommitData(junitSuite junit.Interface) ([]aspell.Commit, []aspell.C
 		return getFreshLocalCommitData(repo, published, junitSuite)
 	}
 
-	log.Print("no remote-tracking refs found, falling back to author-change heuristic")
+	slog.Info("no remote-tracking refs found, falling back to author-change heuristic")
 
 	return getAuthorLocalCommitData(repo, junitSuite)
 }
@@ -553,7 +551,7 @@ func remoteReachableHashes(repo *git.Repository) map[plumbing.Hash]bool {
 	})
 
 	if hasUpstream {
-		log.Print("using 'upstream' remote as published-commit boundary")
+		slog.Info("using 'upstream' remote as published-commit boundary")
 	}
 
 	for _, ref := range remoteRefs {
@@ -587,7 +585,7 @@ func getFreshLocalCommitData(repo *git.Repository, published map[plumbing.Hash]b
 	}
 
 	if published[headCommit.Hash] {
-		log.Print("no local commits ahead of remote-tracking refs, nothing to check")
+		slog.Info("no local commits ahead of remote-tracking refs, nothing to check")
 		return []aspell.Commit{}, []aspell.CommitDiff{}, nil
 	}
 
@@ -601,7 +599,7 @@ func getFreshLocalCommitData(repo *git.Repository, published map[plumbing.Hash]b
 		return nil, nil, fmt.Errorf("%w: iterating git commits: %w", errCommitDataUnavailable, err)
 	}
 
-	log.Printf("checking %d local commit(s) not present on any remote", len(fresh))
+	slog.Info("checking local commits not present on any remote", "count", len(fresh))
 
 	commitData := []aspell.Commit{}
 	for _, commit := range fresh {
@@ -719,7 +717,7 @@ func perCommitDiffs(commits []*object.Commit) ([]aspell.CommitDiff, error) {
 	diffs := []aspell.CommitDiff{}
 	for _, c := range commits {
 		if c.NumParents() == 0 {
-			log.Printf("skipping diff for parentless commit %s", shortHash(c.Hash.String()))
+			slog.Info("skipping diff for parentless commit", "commit", shortHash(c.Hash.String()))
 			continue
 		}
 		parent, err := c.Parent(0)
@@ -812,7 +810,7 @@ func gitlabAPICommitData(gitlabClient *gitlab.Client, mri, project string, junit
 			junitSuite.AddMessageFailed("", "empty line between subject and body is required", fmt.Sprintf("%s %s", hash, l[0]))
 			return nil, nil, fmt.Errorf("empty line between subject and body is required: %s %s", hash, l[0])
 		}
-		log.Printf("detected message %s from commit %s", l[0], hash)
+		slog.Info("detected commit message", "commit", hash, "subject", l[0])
 		commitData = append(commitData, aspell.Commit{Hash: hash, Subject: l[0], Message: c.Message})
 	}
 
@@ -839,7 +837,7 @@ func (c CommitPolicyConfig) CheckSubjectList(commits []aspell.Commit, junitSuite
 	for _, commit := range commits {
 		subject := strings.Trim(commit.Subject, "'")
 		if err := c.CheckSubject([]byte(subject), junitSuite); err != nil {
-			log.Printf("%s, commit %s original subject message '%s'", err, commit.Hash, subject)
+			slog.Error("invalid commit subject", "commit", commit.Hash, "subject", subject, "err", err)
 
 			hasErrors = true
 		}
@@ -862,7 +860,7 @@ func getGitHashes(repoPath string) map[string]struct{} {
 
 	repo, err := git.PlainOpen(repoPath)
 	if err != nil {
-		log.Printf("warning: could not open git repo for hash collection: %s", err)
+		slog.Warn("could not open git repo for hash collection", "err", err)
 		return hashes
 	}
 
@@ -871,7 +869,7 @@ func getGitHashes(repoPath string) map[string]struct{} {
 		All:   true,
 	})
 	if err != nil {
-		log.Printf("warning: could not get git log for hash collection: %s", err)
+		slog.Warn("could not get git log for hash collection", "err", err)
 		return hashes
 	}
 
@@ -881,7 +879,7 @@ func getGitHashes(repoPath string) map[string]struct{} {
 		return nil
 	})
 
-	log.Printf("collected %d git commit hashes for body hash filtering", len(hashes))
+	slog.Info("collected git commit hashes for body hash filtering", "count", len(hashes))
 
 	return hashes
 }

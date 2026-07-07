@@ -3,7 +3,7 @@ package aspell
 import (
 	"bytes"
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -224,7 +224,7 @@ func (a Aspell) collectIdentifiers(content []CommitDiff) []string {
 				readFiles[name] = struct{}{}
 				data, err := os.ReadFile(name)
 				if err != nil {
-					log.Printf("aspell: could not read file %s for identifiers, using diff: %v", name, err)
+					slog.Warn("could not read file for identifiers, using diff", "file", name, "err", err)
 					addWords(name, d.Files[name])
 					continue
 				}
@@ -258,7 +258,7 @@ func (a Aspell) collectIdentifiers(content []CommitDiff) []string {
 		identifierWords = append(identifierWords, w)
 	}
 	if len(identifierWords) > 0 {
-		log.Printf("collected %d identifiers (scope: %s) for spell check filtering", len(identifierWords), a.IdentifierScope)
+		slog.Info("collected identifiers for spell check filtering", "count", len(identifierWords), "scope", string(a.IdentifierScope))
 	}
 	return identifierWords
 }
@@ -267,7 +267,7 @@ func (a Aspell) checkSubjects(commits []Commit, junitSuite junit.Interface, resp
 	for _, c := range commits {
 		if err := a.checkSingle(c.Subject, []string{}); err != nil {
 			junitSuite.AddMessageFailed("commit message", "aspell check failed", err.Error())
-			log.Printf("commit %s subject %q %s", c.Hash, c.Subject, err.Error())
+			slog.Error("aspell check failed on subject", "commit", c.Hash, "subject", c.Subject, "err", err)
 			_, _ = fmt.Fprintf(response, "commit %s %q: %s\n", c.Hash, c.Subject, err)
 		}
 	}
@@ -297,9 +297,11 @@ func (a Aspell) checkFiles(content []CommitDiff, identifierWords []string, junit
 				location := name
 				if d.Hash != "" {
 					location = fmt.Sprintf("commit %s %q %s", d.Hash, d.Subject, name)
+					slog.Error("aspell check failed", "commit", d.Hash, "subject", d.Subject, "file", name, "err", err)
+				} else {
+					slog.Error("aspell check failed", "file", name, "err", err)
 				}
 				junitSuite.AddMessageFailed(location, "aspell check failed", err.Error())
-				log.Println(location, err.Error())
 				_, _ = fmt.Fprintf(response, "%s: %s\n", location, err)
 			}
 		}
@@ -312,13 +314,13 @@ func (a Aspell) checkCommitMessages(commits []Commit, identifierWords []string, 
 		subject := parts[0]
 		if err := a.checkSingle(subject, []string{}); err != nil {
 			junitSuite.AddMessageFailed("commit message", "aspell check failed", err.Error())
-			log.Printf("commit %s subject %q %s", c.Hash, subject, err.Error())
+			slog.Error("aspell check failed on subject", "commit", c.Hash, "subject", subject, "err", err)
 			_, _ = fmt.Fprintf(response, "commit %s %q: %s\n", c.Hash, subject, err)
 		}
 		if len(parts) > 1 {
 			if err := a.checkSingle(parts[1], identifierWords); err != nil {
 				junitSuite.AddMessageFailed("commit message", "aspell check failed", err.Error())
-				log.Printf("commit %s body %q %s", c.Hash, subject, err.Error())
+				slog.Error("aspell check failed on body", "commit", c.Hash, "subject", subject, "err", err)
 				_, _ = fmt.Fprintf(response, "commit %s %q (body): %s\n", c.Hash, subject, err)
 			}
 		}
@@ -362,7 +364,7 @@ func checkWithAspellExec(subject string, extraDicts ...string) (string, error) {
 	cmd.Stderr = &stderr
 	err := cmd.Run()
 	if err != nil {
-		log.Printf("aspell error: %s, stderr: %s", err, stderr.String())
+		slog.Error("aspell execution failed", "err", err, "stderr", stderr.String())
 		return "", err
 	}
 

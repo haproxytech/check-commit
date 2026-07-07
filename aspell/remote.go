@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"strings"
@@ -16,9 +16,9 @@ func fetchRemoteFile(aspell Aspell) ([]string, error) {
 	url := aspell.RemoteFile.URL
 	if aspell.RemoteFile.URLEnv != "" {
 		url = os.Getenv(aspell.RemoteFile.URLEnv)
-		log.Printf("aspell remote file: using URL from env %s: %q", aspell.RemoteFile.URLEnv, url)
+		slog.Info("aspell remote file: using URL from env", "env", aspell.RemoteFile.URLEnv, "url", url)
 	} else {
-		log.Printf("aspell remote file: using URL: %q", url)
+		slog.Info("aspell remote file: using URL", "url", url)
 	}
 
 	if url == "" {
@@ -33,14 +33,14 @@ func fetchRemoteFile(aspell Aspell) ([]string, error) {
 	if aspell.RemoteFile.HeaderFromENV != "" {
 		envValue := os.Getenv(aspell.RemoteFile.HeaderFromENV)
 		if envValue == "" {
-			log.Printf("aspell remote file: warning: header env %s is empty", aspell.RemoteFile.HeaderFromENV)
+			slog.Warn("aspell remote file: header env is empty", "env", aspell.RemoteFile.HeaderFromENV)
 		}
 		req.Header.Set(aspell.RemoteFile.HeaderFromENV, envValue)
 	}
 	if aspell.RemoteFile.PrivateTokenENV != "" {
 		envValue := os.Getenv(aspell.RemoteFile.PrivateTokenENV)
 		if envValue == "" {
-			log.Printf("aspell remote file: warning: private token env %s is empty", aspell.RemoteFile.PrivateTokenENV)
+			slog.Warn("aspell remote file: private token env is empty", "env", aspell.RemoteFile.PrivateTokenENV)
 		}
 		req.Header.Set("PRIVATE-TOKEN", envValue)
 	}
@@ -78,16 +78,16 @@ func fetchRemoteFile(aspell Aspell) ([]string, error) {
 			if err != nil {
 				return nil, fmt.Errorf("aspell remote file: failed to parse YAML block: %w", err)
 			}
-			log.Printf("aspell remote file: loaded %d words (yaml block): %v", len(allowedWords), wordSample(allowedWords))
+			slog.Info("aspell remote file: loaded words", "format", "yaml block", "count", len(allowedWords), "sample", wordSample(allowedWords))
 			return allowedWords, nil
 		}
 		allowedWords = strings.Split(content, "\n")
-		log.Printf("aspell remote file: loaded %d words (newline-separated): %v", len(allowedWords), wordSample(allowedWords))
+		slog.Info("aspell remote file: loaded words", "format", "newline-separated", "count", len(allowedWords), "sample", wordSample(allowedWords))
 	} else {
 		for _, item := range items {
 			allowedWords = append(allowedWords, item.(string))
 		}
-		log.Printf("aspell remote file: loaded %d words (JSON array): %v", len(allowedWords), wordSample(allowedWords))
+		slog.Info("aspell remote file: loaded words", "format", "JSON array", "count", len(allowedWords), "sample", wordSample(allowedWords))
 	}
 
 	return allowedWords, nil

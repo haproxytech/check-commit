@@ -2,7 +2,7 @@ package aspell
 
 import (
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 	"strings"
 
@@ -14,7 +14,7 @@ func New(filename string) (Aspell, error) {
 	var err error
 	fileExists := true
 	if data, err = os.ReadFile(filename); err != nil {
-		log.Printf("warning: aspell exceptions file not found (%s)", err.Error())
+		slog.Info("aspell exceptions file not found", "err", err)
 		fileExists = false
 	}
 
@@ -28,11 +28,10 @@ func New(filename string) (Aspell, error) {
 	if aspell.RemoteFile.URL != "" || aspell.RemoteFile.URLEnv != "" {
 		extraAllowedWords, err = fetchRemoteFile(aspell)
 		if err != nil {
-			log.Printf("warning: aspell remote file (%s)", err.Error())
-			return Aspell{}, err
+			return Aspell{}, err // logged by the caller as one config error
 		}
 		if len(extraAllowedWords) == 0 {
-			log.Print("warning: aspell remote file is empty")
+			slog.Warn("aspell remote file is empty")
 		}
 	}
 
@@ -40,8 +39,7 @@ func New(filename string) (Aspell, error) {
 	if len(aspell.Dictionaries.GitHub) > 0 || len(aspell.Dictionaries.GitLab) > 0 || len(aspell.Dictionaries.URLs) > 0 {
 		fetched, dictErr := fetchDictionaries(aspell.Dictionaries)
 		if dictErr != nil {
-			log.Printf("warning: aspell dictionaries fetch failed: %s", dictErr)
-			return Aspell{}, dictErr
+			return Aspell{}, dictErr // logged by the caller as one config error
 		}
 		extraAllowedWords = append(extraAllowedWords, fetched.words...)
 		aspell.ExtraDicts = fetched.rwsFiles
@@ -88,7 +86,7 @@ func New(filename string) (Aspell, error) {
 		}
 	}
 
-	log.Printf("aspell mode set to %s", aspell.Mode)
+	slog.Info("aspell mode set", "mode", string(aspell.Mode))
 	if fileExists {
 		aspell.HelpText = `aspell can be configured with .aspell.yml file.
 Add words to allowed list if its false positive`
@@ -123,7 +121,7 @@ dictionaries:
 	ignoreFiles := []string{"go.mod", "go.sum"}
 	for _, file := range ignoreFiles {
 		if _, err := os.Stat(file); err == nil {
-			log.Printf("aspell: added %s to ignore list", file)
+			slog.Info("added file to aspell ignore list", "file", file)
 			aspell.IgnoreFiles = append(aspell.IgnoreFiles, file)
 		}
 	}

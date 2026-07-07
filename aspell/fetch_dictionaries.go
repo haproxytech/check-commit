@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -107,7 +107,7 @@ func fetchGitHubDirectory(gh GitHubDictionary) (fetchedDictionaries, error) {
 	owner, repo, ref, path := m[1], m[2], m[3], m[4]
 
 	apiURL := fmt.Sprintf("https://api.github.com/repos/%s/%s/contents/%s?ref=%s", owner, repo, path, ref)
-	log.Printf("aspell dictionaries: listing GitHub directory: %s", apiURL)
+	slog.Info("listing GitHub dictionary directory", "url", apiURL)
 
 	req, err := http.NewRequest("GET", apiURL, nil)
 	if err != nil {
@@ -119,7 +119,7 @@ func fetchGitHubDirectory(gh GitHubDictionary) (fetchedDictionaries, error) {
 		if token != "" {
 			req.Header.Set("Authorization", "Bearer "+token)
 		} else {
-			log.Printf("aspell dictionaries: warning: token env %s is empty", gh.TokenEnv)
+			slog.Warn("dictionary token env is empty", "env", gh.TokenEnv)
 		}
 	}
 
@@ -148,7 +148,7 @@ func fetchGitHubDirectory(gh GitHubDictionary) (fetchedDictionaries, error) {
 		if entry.DownloadURL == "" {
 			continue
 		}
-		log.Printf("aspell dictionaries: fetching %s", entry.DownloadURL)
+		slog.Info("fetching dictionary", "url", entry.DownloadURL)
 		fetched, err := fetchSingleFile(entry.DownloadURL, entry.Name, gh.TokenEnv)
 		if err != nil {
 			return result, fmt.Errorf("fetching %s: %w", entry.Name, err)
@@ -157,7 +157,7 @@ func fetchGitHubDirectory(gh GitHubDictionary) (fetchedDictionaries, error) {
 		result.rwsFiles = append(result.rwsFiles, fetched.rwsFiles...)
 	}
 
-	log.Printf("aspell dictionaries: loaded %d words and %d .rws files from %s", len(result.words), len(result.rwsFiles), gh.URL)
+	slog.Info("loaded dictionaries", "words", len(result.words), "rwsFiles", len(result.rwsFiles), "url", gh.URL)
 	return result, nil
 }
 
@@ -176,7 +176,7 @@ func fetchGitLabDirectory(gl GitLabDictionary) (fetchedDictionaries, error) {
 	encodedProject := strings.ReplaceAll(project, "/", "%2F")
 	apiURL := fmt.Sprintf("%s/api/v4/projects/%s/repository/tree?path=%s&ref=%s&per_page=100",
 		baseURL, encodedProject, path, ref)
-	log.Printf("aspell dictionaries: listing GitLab directory: %s", apiURL)
+	slog.Info("listing GitLab dictionary directory", "url", apiURL)
 
 	req, err := http.NewRequest("GET", apiURL, nil)
 	if err != nil {
@@ -210,7 +210,7 @@ func fetchGitLabDirectory(gl GitLabDictionary) (fetchedDictionaries, error) {
 		encodedPath := strings.ReplaceAll(entry.Path, "/", "%2F")
 		rawURL := fmt.Sprintf("%s/api/v4/projects/%s/repository/files/%s/raw?ref=%s",
 			baseURL, encodedProject, encodedPath, ref)
-		log.Printf("aspell dictionaries: fetching %s", rawURL)
+		slog.Info("fetching dictionary", "url", rawURL)
 		fetched, err := fetchSingleFile(rawURL, entry.Name, gl.TokenEnv)
 		if err != nil {
 			return result, fmt.Errorf("fetching %s: %w", entry.Name, err)
@@ -219,7 +219,7 @@ func fetchGitLabDirectory(gl GitLabDictionary) (fetchedDictionaries, error) {
 		result.rwsFiles = append(result.rwsFiles, fetched.rwsFiles...)
 	}
 
-	log.Printf("aspell dictionaries: loaded %d words and %d .rws files from %s", len(result.words), len(result.rwsFiles), gl.URL)
+	slog.Info("loaded dictionaries", "words", len(result.words), "rwsFiles", len(result.rwsFiles), "url", gl.URL)
 	return result, nil
 }
 
@@ -229,7 +229,7 @@ func setGitLabToken(req *http.Request, tokenEnv string) {
 	}
 	token := os.Getenv(tokenEnv)
 	if token == "" {
-		log.Printf("aspell dictionaries: warning: token env %s is empty", tokenEnv)
+		slog.Warn("dictionary token env is empty", "env", tokenEnv)
 		return
 	}
 	req.Header.Set("PRIVATE-TOKEN", token)
@@ -238,7 +238,7 @@ func setGitLabToken(req *http.Request, tokenEnv string) {
 // fetchDictionaryURL fetches a single dictionary file from a URL.
 func fetchDictionaryURL(rawURL string) (fetchedDictionaries, error) {
 	name := filepath.Base(rawURL)
-	log.Printf("aspell dictionaries: fetching %s", rawURL)
+	slog.Info("fetching dictionary", "url", rawURL)
 	return fetchSingleFile(rawURL, name, "")
 }
 
@@ -290,16 +290,16 @@ func fetchSingleFile(url, name, tokenEnv string) (fetchedDictionaries, error) {
 		}
 		_ = tmpFile.Close()
 		result.rwsFiles = append(result.rwsFiles, tmpFile.Name())
-		log.Printf("aspell dictionaries: saved .rws dictionary %s to %s", name, tmpFile.Name())
+		slog.Info("saved .rws dictionary", "file", name, "path", tmpFile.Name())
 	case strings.HasSuffix(lower, ".txt"):
 		words := parseTxtDictionary(string(data))
 		result.words = append(result.words, words...)
-		log.Printf("aspell dictionaries: loaded %d words from %s", len(words), name)
+		slog.Info("loaded dictionary words", "count", len(words), "file", name)
 	default:
 		// Treat unknown extensions as plain text word lists
 		words := parseTxtDictionary(string(data))
 		result.words = append(result.words, words...)
-		log.Printf("aspell dictionaries: loaded %d words from %s (treated as text)", len(words), name)
+		slog.Info("loaded dictionary words as plain text", "count", len(words), "file", name)
 	}
 
 	return result, nil

@@ -2,7 +2,6 @@ package main
 
 import (
 	"bufio"
-	"log"
 	"os"
 	"strings"
 	"testing"
@@ -12,8 +11,6 @@ import (
 )
 
 func Test_Aspell(t *testing.T) {
-	log.SetFlags(log.LstdFlags | log.Lshortfile)
-
 	aspellCheck, err := aspell.New(".aspell.yml")
 	if err != nil {
 		t.Errorf("checkWithAspell() error = %v", err)

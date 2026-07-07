@@ -3,7 +3,7 @@ package main
 import (
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 	"path"
 
@@ -18,9 +18,11 @@ var exitCode = 0
 
 func main() {
 	_ = godotenv.Load(".env")
+	initLogging()
 	err := version.Set()
 	if err != nil {
-		log.Fatal(err)
+		slog.Error("failed to read build info", "err", err)
+		os.Exit(1)
 	}
 	if len(os.Args) == 2 {
 		switch os.Args[1] {
@@ -44,8 +46,7 @@ func main() {
 			os.Exit(0)
 		}
 	}
-	log.SetFlags(log.LstdFlags | log.Lshortfile)
-	log.Printf("check-commit %s", version.Version)
+	slog.Info("check-commit", "version", version.Version)
 
 	// JUNIT_FILE
 	ts := junit_report.NewTestSuites()
@@ -61,10 +62,11 @@ func main() {
 		if exitCode == 0 {
 			junitSuite.AddMessageOK("check-commit", "check-commit completed successfully", "")
 		}
-		log.Printf("JUNIT_FILE is set to %s\n", junitFile)
+		slog.Info("writing junit report", "file", junitFile)
 		err := ts.Write(junitFile)
 		if err != nil {
-			log.Fatalf("failed to save junit report: %s", err)
+			slog.Error("failed to save junit report", "err", err)
+			os.Exit(1)
 		}
 	}
 	os.Exit(exitCode)
@@ -82,7 +84,7 @@ func start(junitSuite junit.Interface) {
 	aspellCheck, err := aspell.New(aspellConfigFile)
 	if err != nil {
 		junitSuite.AddMessageFailed(".aspell.yml", "error reading aspell configuration", err.Error())
-		log.Printf("error reading aspell configuration: %s", err)
+		slog.Error("error reading aspell configuration", "err", err)
 		exitCode = 1
 		return
 	}
@@ -90,20 +92,20 @@ func start(junitSuite junit.Interface) {
 	commitPolicy, err := LoadCommitPolicy(path.Join(repoPath, ".check-commit.yml"))
 	if err != nil {
 		junitSuite.AddMessageFailed(".check-commit.yml", "error reading configuration", err.Error())
-		log.Printf("error reading configuration: %s", err)
+		slog.Error("error reading configuration", "err", err)
 		exitCode = 1
 		return
 	}
 
 	if commitPolicy.IsEmpty() {
 		junitSuite.AddMessageOK("", "using empty configuration", "")
-		log.Print("WARNING: using empty configuration (i.e. no verification)")
+		slog.Warn("using empty configuration (i.e. no verification)")
 	}
 
 	gitEnv, err := readGitEnvironment()
 	if err != nil {
 		junitSuite.AddMessageFailed("", "couldn't auto-detect running environment, please set GITHUB_REF and GITHUB_BASE_REF manually", err.Error())
-		log.Printf("couldn't auto-detect running environment, please set GITHUB_REF and GITHUB_BASE_REF manually: %s", err)
+		slog.Error("couldn't auto-detect running environment, please set GITHUB_REF and GITHUB_BASE_REF manually", "err", err)
 		exitCode = 1
 		return
 	}
@@ -118,7 +120,7 @@ func start(junitSuite junit.Interface) {
 
 	if err := commitPolicy.CheckSubjectList(commits, junitSuite); err != nil {
 		junitSuite.AddMessageFailed("commit subject check", "commit subject policy violation", commitPolicy.HelpText)
-		log.Printf("%s\n", commitPolicy.HelpText)
+		_, _ = fmt.Fprintln(os.Stderr, commitPolicy.HelpText)
 		exitCode = 1
 		return
 	}
@@ -127,25 +129,24 @@ func start(junitSuite junit.Interface) {
 
 	err = aspellCheck.Check(commits, content, junitSuite, gitHashes)
 	if err != nil {
-		log.Print("encountered one or more commit message spelling errors")
-		// log.Fatalf("%s\n", err)
-		log.Printf("%s\n", aspellCheck.HelpText)
+		slog.Error("encountered one or more commit message spelling errors")
+		_, _ = fmt.Fprintln(os.Stderr, aspellCheck.HelpText)
 		exitCode = 1
 		return
 	}
 
-	log.Print("check completed without errors")
+	slog.Info("check completed without errors")
 }
 
 // handleDataError records a commit data failure; returns true when the run
 // must fail. In CI, unavailable data skips checks with details in the junit body.
 func handleDataError(err error, gitEnv string, junitSuite junit.Interface) bool {
 	if gitEnv != LOCAL && errors.Is(err, errCommitDataUnavailable) {
-		log.Printf("warning: commit checks skipped: %s", err)
+		slog.Warn("commit checks skipped", "err", err)
 		junitSuite.AddMessageOK("commit data", "commit checks skipped: could not determine commits to check", err.Error())
 		return false
 	}
-	log.Printf("error getting commit data: %s", err)
+	slog.Error("error getting commit data", "err", err)
 	if errors.Is(err, errCommitDataUnavailable) {
 		junitSuite.AddMessageFailed("commit data", "error getting commit data", err.Error())
 	}
