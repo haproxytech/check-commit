@@ -51,7 +51,13 @@ steps:
     env:
       API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 ```
-Check-commit works only on `pull_request` events by inspecting all commit messages in a Pull Request. It uses Github API [pull requests API](https://docs.github.com/en/rest/reference/pulls#list-commits-on-a-pull-request) to fetch the commits so API_TOKEN env_variable is required.
+Check-commit works only on `pull_request` events by inspecting all commit messages in a Pull Request.
+
+### Commit data source
+
+Commits and diffs are read from the local git clone when possible (GitHub, GitLab and local runs alike), which enables attributing file spelling errors to the commit that introduced them. For this to work in CI the clone needs enough history — use `fetch-depth: 0` with `actions/checkout` (GitHub) or `GIT_DEPTH: "0"` (GitLab).
+
+When the clone is missing or too shallow, check-commit falls back to the [pull requests API](https://docs.github.com/en/rest/reference/pulls#list-commits-on-a-pull-request) / GitLab merge requests API (set `API_TOKEN`). If the API is also unavailable, the checks are skipped with a warning: the run stays green and the junit report contains a `commit checks skipped` entry whose body carries the error detail.
 
 ## Example configuration
 

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -109,8 +110,9 @@ func start(junitSuite junit.Interface) {
 
 	commits, content, err := getCommitData(gitEnv, junitSuite)
 	if err != nil {
-		log.Printf("error getting commit data: %s", err)
-		exitCode = 1
+		if handleDataError(err, gitEnv, junitSuite) {
+			exitCode = 1
+		}
 		return
 	}
 
@@ -133,4 +135,19 @@ func start(junitSuite junit.Interface) {
 	}
 
 	log.Print("check completed without errors")
+}
+
+// handleDataError records a commit data failure; returns true when the run
+// must fail. In CI, unavailable data skips checks with details in the junit body.
+func handleDataError(err error, gitEnv string, junitSuite junit.Interface) bool {
+	if gitEnv != LOCAL && errors.Is(err, errCommitDataUnavailable) {
+		log.Printf("warning: commit checks skipped: %s", err)
+		junitSuite.AddMessageOK("commit data", "commit checks skipped: could not determine commits to check", err.Error())
+		return false
+	}
+	log.Printf("error getting commit data: %s", err)
+	if errors.Is(err, errCommitDataUnavailable) {
+		junitSuite.AddMessageFailed("commit data", "error getting commit data", err.Error())
+	}
+	return true
 }

@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -241,6 +242,20 @@ func (c CommitPolicyConfig) IsEmpty() bool {
 
 var ErrGitEnvironment = errors.New("git environment error")
 
+var (
+	// errCommitDataUnavailable marks infra failures; in CI they skip checks.
+	errCommitDataUnavailable = errors.New("commit data unavailable")
+	// errLocalGitUnavailable marks git-clone problems; caller falls back to API.
+	errLocalGitUnavailable = errors.New("local git data unavailable")
+)
+
+func shortHash(h string) string {
+	if len(h) > 8 {
+		return h[:8]
+	}
+	return h
+}
+
 func readGitEnvironment() (string, error) {
 	if os.Getenv("CHECK") == LOCAL {
 		return LOCAL, nil
@@ -285,91 +300,220 @@ func LoadCommitPolicy(filename string) (CommitPolicyConfig, error) {
 	return commitPolicy, nil
 }
 
-func getGithubCommitData(junitSuite junit.Interface) ([]aspell.Commit, []map[string]string, error) {
+type githubEventRef struct {
+	SHA string `json:"sha"`
+}
+
+type githubEventPR struct {
+	Base githubEventRef `json:"base"`
+	Head githubEventRef `json:"head"`
+}
+
+type githubEventPayload struct {
+	PullRequest githubEventPR `json:"pull_request"`
+}
+
+// githubPRShas reads base/head SHAs from the GitHub event payload on disk.
+func githubPRShas() (string, string, error) {
+	if event := os.Getenv("GITHUB_EVENT_NAME"); event != "pull_request" {
+		return "", "", fmt.Errorf("unsupported event name: %s", event)
+	}
+	eventPath := os.Getenv("GITHUB_EVENT_PATH")
+	if eventPath == "" {
+		return "", "", errors.New("GITHUB_EVENT_PATH not set")
+	}
+	data, err := os.ReadFile(eventPath)
+	if err != nil {
+		return "", "", fmt.Errorf("reading event payload: %w", err)
+	}
+	var payload githubEventPayload
+	if err := json.Unmarshal(data, &payload); err != nil {
+		return "", "", fmt.Errorf("parsing event payload: %w", err)
+	}
+	if payload.PullRequest.Base.SHA == "" || payload.PullRequest.Head.SHA == "" {
+		return "", "", errors.New("event payload has no pull_request base/head sha")
+	}
+	return payload.PullRequest.Base.SHA, payload.PullRequest.Head.SHA, nil
+}
+
+// gitlabMRShas reads MR base/head SHAs from GitLab CI env vars.
+func gitlabMRShas() (string, string, error) {
+	base := os.Getenv("CI_MERGE_REQUEST_DIFF_BASE_SHA")
+	head := os.Getenv("CI_MERGE_REQUEST_SOURCE_BRANCH_SHA")
+	if head == "" {
+		head = os.Getenv("CI_COMMIT_SHA")
+	}
+	if base == "" || head == "" {
+		return "", "", errors.New("CI merge request SHAs not set")
+	}
+	return base, head, nil
+}
+
+// resolveRange opens the repo and resolves base/head commits; failure means
+// the clone is missing or too shallow and the caller should fall back.
+func resolveRange(repoPath, baseSHA, headSHA string) (*object.Commit, *object.Commit, error) {
+	repo, err := git.PlainOpen(repoPath)
+	if err != nil {
+		return nil, nil, fmt.Errorf("%w: opening repository: %w", errLocalGitUnavailable, err)
+	}
+	base, err := repo.CommitObject(plumbing.NewHash(baseSHA))
+	if err != nil {
+		return nil, nil, fmt.Errorf("%w: base %s not found locally: %w", errLocalGitUnavailable, baseSHA, err)
+	}
+	head, err := repo.CommitObject(plumbing.NewHash(headSHA))
+	if err != nil {
+		return nil, nil, fmt.Errorf("%w: head %s not found locally: %w", errLocalGitUnavailable, headSHA, err)
+	}
+	return base, head, nil
+}
+
+// rangeData collects commits and per-commit diffs for base..head.
+// Git failures wrap errLocalGitUnavailable so the caller may fall back;
+// commit message validation errors are returned as-is and are fatal.
+func rangeData(base, head *object.Commit, junitSuite junit.Interface) ([]aspell.Commit, []aspell.CommitDiff, error) {
+	excluded := map[plumbing.Hash]bool{}
+	baseIter := object.NewCommitPreorderIter(base, nil, nil)
+	if err := baseIter.ForEach(func(c *object.Commit) error {
+		excluded[c.Hash] = true
+		return nil
+	}); err != nil {
+		return nil, nil, fmt.Errorf("%w: walking base history: %w", errLocalGitUnavailable, err)
+	}
+
+	fresh := []*object.Commit{}
+	if !excluded[head.Hash] {
+		iter := object.NewCommitPreorderIter(head, excluded, nil)
+		if err := iter.ForEach(func(c *object.Commit) error {
+			fresh = append(fresh, c)
+			return nil
+		}); err != nil {
+			return nil, nil, fmt.Errorf("%w: walking head history: %w", errLocalGitUnavailable, err)
+		}
+	}
+
+	log.Printf("checking %d commit(s) in range from local git data", len(fresh))
+
+	diffs, err := perCommitDiffs(fresh)
+	if err != nil {
+		return nil, nil, fmt.Errorf("%w: %w", errLocalGitUnavailable, err)
+	}
+
+	commitData := []aspell.Commit{}
+	for _, commit := range fresh {
+		aspellCommit, err := toAspellCommit(commit, junitSuite)
+		if err != nil {
+			return nil, nil, err // policy violation, do not fall back
+		}
+		commitData = append(commitData, aspellCommit)
+	}
+
+	return commitData, diffs, nil
+}
+
+// gitNativeCIData tries the local-clone path shared by GitHub and GitLab.
+// The bool reports whether the result (or error) is usable; false means the
+// caller should fall back to the API.
+func gitNativeCIData(shas func() (string, string, error), api string, junitSuite junit.Interface) ([]aspell.Commit, []aspell.CommitDiff, bool, error) {
+	base, head, err := shas()
+	if err != nil {
+		log.Printf("warning: cannot use local git data (%s), falling back to %s API", err, api)
+		return nil, nil, false, nil
+	}
+	baseCommit, headCommit, err := resolveRange(".", base, head)
+	if err != nil {
+		log.Printf("warning: %s, falling back to %s API", err, api)
+		return nil, nil, false, nil
+	}
+	commits, diffs, err := rangeData(baseCommit, headCommit, junitSuite)
+	if err != nil {
+		if errors.Is(err, errLocalGitUnavailable) {
+			log.Printf("warning: %s, falling back to %s API", err, api)
+			return nil, nil, false, nil
+		}
+		return nil, nil, true, err // policy violation, fatal
+	}
+	return commits, diffs, true, nil
+}
+
+func getGithubCommitData(junitSuite junit.Interface) ([]aspell.Commit, []aspell.CommitDiff, error) {
+	if commits, diffs, ok, err := gitNativeCIData(githubPRShas, GITHUB, junitSuite); ok {
+		return commits, diffs, err
+	}
+
 	token := getAPIToken("GITHUB_TOKEN")
 	repo := os.Getenv("GITHUB_REPOSITORY")
 	ref := os.Getenv("GITHUB_REF")
 	event := os.Getenv("GITHUB_EVENT_NAME")
 
 	ctx := context.Background()
-
 	ts := oauth2.StaticTokenSource(
 		&oauth2.Token{AccessToken: token},
 	)
 	tc := oauth2.NewClient(ctx, ts)
-	githubClient := github.NewClient(tc)
 
-	if event == "pull_request" {
-		repoSlice := strings.SplitN(repo, "/", 2)
-		if len(repoSlice) < 2 {
-			junitSuite.AddMessageFailed("", "error fetching owner and project from repo", fmt.Sprintf("invalid repository format: %s", repo))
-			return nil, nil, fmt.Errorf("error fetching owner and project from repo %s", repo)
-		}
-		owner := repoSlice[0]
-		project := repoSlice[1]
-
-		refSlice := strings.SplitN(ref, "/", 4)
-		if len(refSlice) < 3 {
-			junitSuite.AddMessageFailed("", "error fetching PR number from ref", fmt.Sprintf("invalid ref format: %s", ref))
-			return nil, nil, fmt.Errorf("error fetching PR from ref %s", ref)
-		}
-		prNo, err := strconv.Atoi(refSlice[2])
-		if err != nil {
-			junitSuite.AddMessageFailed("", "error fetching PR number from ref", fmt.Sprintf("invalid pr number: %s", refSlice[2]))
-			return nil, nil, fmt.Errorf("error fetching PR number from %s: %w", refSlice[2], err)
-		}
-
-		commits, _, err := githubClient.PullRequests.ListCommits(ctx, owner, project, prNo, &github.ListOptions{})
-		if err != nil {
-			junitSuite.AddMessageFailed("", "error fetching commits", err.Error())
-			return nil, nil, fmt.Errorf("error fetching commits: %w", err)
-		}
-
-		commitData := []aspell.Commit{}
-		diffs := []map[string]string{}
-		for _, c := range commits {
-			l := strings.SplitN(c.Commit.GetMessage(), "\n", 3)
-			hash := c.Commit.GetSHA()
-			if len(hash) > 8 {
-				hash = hash[:8]
-			}
-			if len(l) > 1 {
-				if l[1] != "" {
-					junitSuite.AddMessageFailed("", "empty line between subject and body is required", fmt.Sprintf("%s %s", hash, l[0]))
-					return nil, nil, fmt.Errorf("empty line between subject and body is required: %s %s", hash, l[0])
-				}
-			}
-			if len(l) > 0 {
-				log.Printf("detected message %s from commit %s", l[0], hash)
-				commitData = append(commitData, aspell.Commit{Hash: hash, Subject: l[0], Message: c.Commit.GetMessage()})
-			}
-
-			files, _, err := githubClient.PullRequests.ListFiles(ctx, owner, project, prNo, &github.ListOptions{})
-			if err != nil {
-				junitSuite.AddMessageFailed("", "error fetching files", err.Error())
-				return nil, nil, fmt.Errorf("error fetching files: %w", err)
-			}
-			content := map[string]string{}
-			for _, file := range files {
-				if _, ok := content[file.GetFilename()]; ok {
-					continue
-				}
-				content[file.GetFilename()] = cleanGitPatch(file.GetPatch())
-			}
-			diffs = append(diffs, content)
-		}
-		return commitData, diffs, nil
-	}
-
-	junitSuite.AddMessageFailed("", "unsupported event name", fmt.Sprintf("unsupported event name: %s", event))
-	return nil, nil, fmt.Errorf("unsupported event name: %s", event)
+	return githubAPICommitData(ctx, github.NewClient(tc), repo, ref, event, junitSuite)
 }
 
-func getLocalCommitData(junitSuite junit.Interface) ([]aspell.Commit, []map[string]string, error) {
+func githubAPICommitData(ctx context.Context, githubClient *github.Client, repo, ref, event string, junitSuite junit.Interface) ([]aspell.Commit, []aspell.CommitDiff, error) {
+	if event != "pull_request" {
+		return nil, nil, fmt.Errorf("%w: unsupported event name: %s", errCommitDataUnavailable, event)
+	}
+
+	repoSlice := strings.SplitN(repo, "/", 2)
+	if len(repoSlice) < 2 {
+		return nil, nil, fmt.Errorf("%w: invalid repository format: %s", errCommitDataUnavailable, repo)
+	}
+	owner := repoSlice[0]
+	project := repoSlice[1]
+
+	refSlice := strings.SplitN(ref, "/", 4)
+	if len(refSlice) < 3 {
+		return nil, nil, fmt.Errorf("%w: invalid ref format: %s", errCommitDataUnavailable, ref)
+	}
+	prNo, err := strconv.Atoi(refSlice[2])
+	if err != nil {
+		return nil, nil, fmt.Errorf("%w: invalid pr number %s: %w", errCommitDataUnavailable, refSlice[2], err)
+	}
+
+	commits, _, err := githubClient.PullRequests.ListCommits(ctx, owner, project, prNo, &github.ListOptions{})
+	if err != nil {
+		return nil, nil, fmt.Errorf("%w: fetching commits: %w", errCommitDataUnavailable, err)
+	}
+
+	// the PR file list is identical for every commit; fetch it once
+	files, _, err := githubClient.PullRequests.ListFiles(ctx, owner, project, prNo, &github.ListOptions{})
+	if err != nil {
+		return nil, nil, fmt.Errorf("%w: fetching files: %w", errCommitDataUnavailable, err)
+	}
+	content := map[string]string{}
+	for _, file := range files {
+		if _, ok := content[file.GetFilename()]; ok {
+			continue
+		}
+		content[file.GetFilename()] = cleanGitPatch(file.GetPatch())
+	}
+
+	commitData := []aspell.Commit{}
+	for _, c := range commits {
+		l := strings.SplitN(c.Commit.GetMessage(), "\n", 3)
+		hash := shortHash(c.Commit.GetSHA())
+		if len(l) > 1 && l[1] != "" {
+			junitSuite.AddMessageFailed("", "empty line between subject and body is required", fmt.Sprintf("%s %s", hash, l[0]))
+			return nil, nil, fmt.Errorf("empty line between subject and body is required: %s %s", hash, l[0])
+		}
+		if len(l) > 0 {
+			log.Printf("detected message %s from commit %s", l[0], hash)
+			commitData = append(commitData, aspell.Commit{Hash: hash, Subject: l[0], Message: c.Commit.GetMessage()})
+		}
+	}
+
+	return commitData, []aspell.CommitDiff{{Files: content}}, nil
+}
+
+func getLocalCommitData(junitSuite junit.Interface) ([]aspell.Commit, []aspell.CommitDiff, error) {
 	repo, err := git.PlainOpen(".")
 	if err != nil {
-		junitSuite.AddMessageFailed("", "error opening local git repository", err.Error())
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("%w: opening local git repository: %w", errCommitDataUnavailable, err)
 	}
 
 	if published := remoteReachableHashes(repo); len(published) > 0 {
@@ -432,21 +576,19 @@ func remoteReachableHashes(repo *git.Repository) map[plumbing.Hash]bool {
 
 // getFreshLocalCommitData checks only commits reachable from HEAD but not
 // from any remote-tracking ref (git rev-list HEAD --not --remotes).
-func getFreshLocalCommitData(repo *git.Repository, published map[plumbing.Hash]bool, junitSuite junit.Interface) ([]aspell.Commit, []map[string]string, error) {
+func getFreshLocalCommitData(repo *git.Repository, published map[plumbing.Hash]bool, junitSuite junit.Interface) ([]aspell.Commit, []aspell.CommitDiff, error) {
 	head, err := repo.Head()
 	if err != nil {
-		junitSuite.AddMessageFailed("", "error reading git HEAD", err.Error())
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("%w: reading git HEAD: %w", errCommitDataUnavailable, err)
 	}
 	headCommit, err := repo.CommitObject(head.Hash())
 	if err != nil {
-		junitSuite.AddMessageFailed("", "error reading git HEAD commit", err.Error())
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("%w: reading git HEAD commit: %w", errCommitDataUnavailable, err)
 	}
 
 	if published[headCommit.Hash] {
 		log.Print("no local commits ahead of remote-tracking refs, nothing to check")
-		return []aspell.Commit{}, []map[string]string{}, nil
+		return []aspell.Commit{}, []aspell.CommitDiff{}, nil
 	}
 
 	fresh := []*object.Commit{}
@@ -456,8 +598,7 @@ func getFreshLocalCommitData(repo *git.Repository, published map[plumbing.Hash]b
 		return nil
 	})
 	if err != nil {
-		junitSuite.AddMessageFailed("", "error iterating through git commits", err.Error())
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("%w: iterating git commits: %w", errCommitDataUnavailable, err)
 	}
 
 	log.Printf("checking %d local commit(s) not present on any remote", len(fresh))
@@ -471,30 +612,9 @@ func getFreshLocalCommitData(repo *git.Repository, published map[plumbing.Hash]b
 		commitData = append(commitData, aspellCommit)
 	}
 
-	// diff base: first published parent of a fresh commit
-	var base *object.Commit
-	for _, c := range fresh {
-		for _, p := range c.ParentHashes {
-			if published[p] {
-				base, err = repo.CommitObject(p)
-				if err != nil {
-					junitSuite.AddMessageFailed("", "error reading git commit", err.Error())
-					return nil, nil, err
-				}
-				break
-			}
-		}
-		if base != nil {
-			break
-		}
-	}
-	if base == nil { // no published ancestor, diff against oldest fresh commit
-		base = fresh[len(fresh)-1]
-	}
-
-	diffs, err := localTreeDiffs(base, headCommit, junitSuite)
+	diffs, err := perCommitDiffs(fresh)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("%w: %w", errCommitDataUnavailable, err)
 	}
 
 	return commitData, diffs, nil
@@ -502,39 +622,29 @@ func getFreshLocalCommitData(repo *git.Repository, published map[plumbing.Hash]b
 
 // getAuthorLocalCommitData collects commits from HEAD until the author name
 // changes; used when no remote-tracking refs exist.
-func getAuthorLocalCommitData(repo *git.Repository, junitSuite junit.Interface) ([]aspell.Commit, []map[string]string, error) {
+func getAuthorLocalCommitData(repo *git.Repository, junitSuite junit.Interface) ([]aspell.Commit, []aspell.CommitDiff, error) {
 	iter, err := repo.Log(&git.LogOptions{
 		Order: git.LogOrderCommitterTime,
 	})
 	if err != nil {
-		junitSuite.AddMessageFailed("", "error getting git log iterator", err.Error())
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("%w: getting git log iterator: %w", errCommitDataUnavailable, err)
 	}
 
 	commitData := []aspell.Commit{}
+	fresh := []*object.Commit{}
 	committer := ""
-	var commit1 *object.Commit
-	var oldestCommit *object.Commit
-	var commit2 *object.Commit
 	for {
 		commit, err := iter.Next()
-		if commit != nil {
-			oldestCommit = commit
-		}
 		if err == io.EOF {
 			break
 		}
 		if err != nil {
-			junitSuite.AddMessageFailed("", "error iterating through git commits", err.Error())
-			return nil, nil, err
+			return nil, nil, fmt.Errorf("%w: iterating git commits: %w", errCommitDataUnavailable, err)
 		}
 		if committer == "" {
 			committer = commit.Author.Name
-			commit1 = commit
 		}
-
 		if commit.Author.Name != committer {
-			commit2 = commit
 			break
 		}
 
@@ -543,15 +653,12 @@ func getAuthorLocalCommitData(repo *git.Repository, junitSuite junit.Interface) 
 			return nil, nil, err
 		}
 		commitData = append(commitData, aspellCommit)
+		fresh = append(fresh, commit)
 	}
 
-	if commit2 == nil {
-		commit2 = oldestCommit
-	}
-
-	diffs, err := localTreeDiffs(commit2, commit1, junitSuite)
+	diffs, err := perCommitDiffs(fresh)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("%w: %w", errCommitDataUnavailable, err)
 	}
 
 	return commitData, diffs, nil
@@ -571,45 +678,66 @@ func toAspellCommit(commit *object.Commit, junitSuite junit.Interface) (aspell.C
 	return aspell.Commit{Hash: commitHash, Subject: l[0], Message: commit.Message}, nil
 }
 
-// localTreeDiffs returns per-file added content between two commits.
-func localTreeDiffs(from, to *object.Commit, junitSuite junit.Interface) ([]map[string]string, error) {
-	diffs := []map[string]string{}
+// treeDiffFiles returns per-file added content between two commits.
+func treeDiffFiles(from, to *object.Commit) (map[string]string, error) {
+	files := map[string]string{}
 
 	tree1, _ := to.Tree()
 	tree2, _ := from.Tree()
 	changes, err := object.DiffTree(tree2, tree1)
 	if err != nil {
-		junitSuite.AddMessageFailed("", "error getting git commit changes", err.Error())
-		return nil, err
+		return nil, fmt.Errorf("getting git commit changes: %w", err)
 	}
 
 	for _, change := range changes {
 		patch, err := change.Patch()
 		if err != nil {
-			junitSuite.AddMessageFailed("", "error getting git patch", err.Error())
-			return nil, err
+			return nil, fmt.Errorf("getting git patch: %w", err)
 		}
 		for _, file := range patch.FilePatches() {
-			chunks := file.Chunks()
 			var fileChanges strings.Builder
 
-			for _, chunk := range chunks {
-				if chunk.Type() == diff.Delete {
-					continue
-				}
-				if chunk.Type() == diff.Equal {
+			for _, chunk := range file.Chunks() {
+				if chunk.Type() == diff.Delete || chunk.Type() == diff.Equal {
 					continue
 				}
 				fileChanges.WriteString(chunk.Content() + "\n")
 			}
-			if fileChanges.String() == "" {
+			if fileChanges.Len() == 0 {
 				continue
 			}
 
-			diffs = append(diffs, map[string]string{change.To.Name: fileChanges.String()})
+			files[change.To.Name] += fileChanges.String()
 		}
 	}
 
+	return files, nil
+}
+
+// perCommitDiffs diffs each commit against its first parent for attribution.
+func perCommitDiffs(commits []*object.Commit) ([]aspell.CommitDiff, error) {
+	diffs := []aspell.CommitDiff{}
+	for _, c := range commits {
+		if c.NumParents() == 0 {
+			log.Printf("skipping diff for parentless commit %s", shortHash(c.Hash.String()))
+			continue
+		}
+		parent, err := c.Parent(0)
+		if err != nil {
+			return nil, fmt.Errorf("reading parent of %s: %w", shortHash(c.Hash.String()), err)
+		}
+		files, err := treeDiffFiles(parent, c)
+		if err != nil {
+			return nil, err
+		}
+		if len(files) > 0 {
+			diffs = append(diffs, aspell.CommitDiff{
+				Hash:    shortHash(c.Hash.String()),
+				Subject: strings.SplitN(c.Message, "\n", 2)[0],
+				Files:   files,
+			})
+		}
+	}
 	return diffs, nil
 }
 
@@ -627,7 +755,11 @@ func cleanGitPatch(patch string) string {
 	return patch
 }
 
-func getGitlabCommitData(junitSuite junit.Interface) ([]aspell.Commit, []map[string]string, error) {
+func getGitlabCommitData(junitSuite junit.Interface) ([]aspell.Commit, []aspell.CommitDiff, error) {
+	if commits, diffs, ok, err := gitNativeCIData(gitlabMRShas, GITLAB, junitSuite); ok {
+		return commits, diffs, err
+	}
+
 	gitlabURL := os.Getenv("CI_API_V4_URL")
 	token := getAPIToken("GITLAB_TOKEN")
 	mri := os.Getenv("CI_MERGE_REQUEST_IID")
@@ -635,66 +767,65 @@ func getGitlabCommitData(junitSuite junit.Interface) ([]aspell.Commit, []map[str
 
 	gitlabClient, err := gitlab.NewClient(token, gitlab.WithBaseURL(gitlabURL))
 	if err != nil {
-		junitSuite.AddMessageFailed("", "failed to create gitlab client", err.Error())
-		return nil, nil, fmt.Errorf("failed to create gitlab client: %w", err)
+		return nil, nil, fmt.Errorf("%w: creating gitlab client: %w", errCommitDataUnavailable, err)
 	}
 
+	return gitlabAPICommitData(gitlabClient, mri, project, junitSuite)
+}
+
+func gitlabAPICommitData(gitlabClient *gitlab.Client, mri, project string, junitSuite junit.Interface) ([]aspell.Commit, []aspell.CommitDiff, error) {
 	mrIID, err := strconv.Atoi(mri)
 	if err != nil {
-		junitSuite.AddMessageFailed("", "invalid merge request id", err.Error())
-		return nil, nil, fmt.Errorf("invalid merge request id %s", mri)
+		return nil, nil, fmt.Errorf("%w: invalid merge request id %s", errCommitDataUnavailable, mri)
 	}
 
 	projectID, err := strconv.Atoi(project)
 	if err != nil {
-		junitSuite.AddMessageFailed("", "invalid project id", err.Error())
-		return nil, nil, fmt.Errorf("invalid project id %s", project)
+		return nil, nil, fmt.Errorf("%w: invalid project id %s", errCommitDataUnavailable, project)
 	}
 	commits, _, err := gitlabClient.MergeRequests.GetMergeRequestCommits(projectID, int64(mrIID), &gitlab.GetMergeRequestCommitsOptions{})
 	if err != nil {
-		junitSuite.AddMessageFailed("", "error fetching commits", err.Error())
-		return nil, nil, fmt.Errorf("error fetching commits: %w", err)
+		return nil, nil, fmt.Errorf("%w: fetching commits: %w", errCommitDataUnavailable, err)
+	}
+
+	// the MR diff list is identical for every commit; fetch it once
+	mrDiffs, _, err := gitlabClient.MergeRequests.ListMergeRequestDiffs(projectID, int64(mrIID), &gitlab.ListMergeRequestDiffsOptions{})
+	if err != nil {
+		return nil, nil, fmt.Errorf("%w: fetching commit changes: %w", errCommitDataUnavailable, err)
+	}
+	content := map[string]string{}
+	for _, d := range mrDiffs {
+		if _, ok := content[d.NewPath]; ok {
+			continue
+		}
+		content[d.NewPath] = cleanGitPatch(d.Diff)
 	}
 
 	commitData := []aspell.Commit{}
-	diffs := []map[string]string{}
 	for _, c := range commits {
 		l := strings.SplitN(c.Message, "\n", 3)
 		hash := c.ShortID
-		if len(l) > 0 {
-			if len(l) > 1 {
-				if l[1] != "" {
-					junitSuite.AddMessageFailed("", "empty line between subject and body is required", fmt.Sprintf("%s %s", hash, l[0]))
-					return nil, nil, fmt.Errorf("empty line between subject and body is required: %s %s", hash, l[0])
-				}
-			}
-			log.Printf("detected message %s from commit %s", l[0], hash)
-			commitData = append(commitData, aspell.Commit{Hash: hash, Subject: l[0], Message: c.Message})
-			mrDiffs, _, err := gitlabClient.MergeRequests.ListMergeRequestDiffs(projectID, int64(mrIID), &gitlab.ListMergeRequestDiffsOptions{})
-			if err != nil {
-				junitSuite.AddMessageFailed("", "error fetching commit changes", err.Error())
-				return nil, nil, fmt.Errorf("error fetching commit changes: %w", err)
-			}
-			content := map[string]string{}
-			for _, d := range mrDiffs {
-				if _, ok := content[d.NewPath]; ok {
-					continue
-				}
-				content[d.NewPath] = cleanGitPatch(d.Diff)
-			}
-			diffs = append(diffs, content)
+		if len(l) == 0 {
+			continue
 		}
+		if len(l) > 1 && l[1] != "" {
+			junitSuite.AddMessageFailed("", "empty line between subject and body is required", fmt.Sprintf("%s %s", hash, l[0]))
+			return nil, nil, fmt.Errorf("empty line between subject and body is required: %s %s", hash, l[0])
+		}
+		log.Printf("detected message %s from commit %s", l[0], hash)
+		commitData = append(commitData, aspell.Commit{Hash: hash, Subject: l[0], Message: c.Message})
 	}
 
-	return commitData, diffs, nil
+	return commitData, []aspell.CommitDiff{{Files: content}}, nil
 }
 
-func getCommitData(repoEnv string, junitSuite junit.Interface) ([]aspell.Commit, []map[string]string, error) {
-	if repoEnv == GITHUB {
+func getCommitData(repoEnv string, junitSuite junit.Interface) ([]aspell.Commit, []aspell.CommitDiff, error) {
+	switch repoEnv {
+	case GITHUB:
 		return getGithubCommitData(junitSuite)
-	} else if repoEnv == GITLAB {
+	case GITLAB:
 		return getGitlabCommitData(junitSuite)
-	} else if repoEnv == LOCAL {
+	case LOCAL:
 		return getLocalCommitData(junitSuite)
 	}
 	return nil, nil, fmt.Errorf("unrecognized git environment %s", repoEnv)

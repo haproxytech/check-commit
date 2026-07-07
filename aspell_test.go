@@ -35,8 +35,8 @@ func Test_Aspell(t *testing.T) {
 	if err := scanner.Err(); err != nil {
 		t.Errorf("could not read "+filename+" file: %v", err)
 	}
-	err = aspellCheck.Check([]aspell.Commit{{Subject: "subject", Message: "body"}}, []map[string]string{
-		{filename: readme.String()},
+	err = aspellCheck.Check([]aspell.Commit{{Subject: "subject", Message: "body"}}, []aspell.CommitDiff{
+		{Files: map[string]string{filename: readme.String()}},
 	}, &junit.JunitSuiteDummy{}, nil)
 	if err != nil {
 		t.Errorf("checkWithAspell() error = %v", err)

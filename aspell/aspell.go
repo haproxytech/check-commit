@@ -25,6 +25,13 @@ type Commit struct {
 	Message string
 }
 
+// CommitDiff carries per-file added content, attributed to a commit when known.
+type CommitDiff struct {
+	Files   map[string]string // file path -> added lines
+	Hash    string            // short commit hash; "" when not attributable
+	Subject string            // commit subject line; "" when not attributable
+}
+
 type RemoteFile struct {
 	URL             string `yaml:"url"`
 	URLEnv          string `yaml:"url_env"`
@@ -55,11 +62,14 @@ var (
 	badWordsGlobal        = map[string]struct{}{}
 )
 
+// aspellExecFn is a seam so tests can stub subprocess spawns.
+var aspellExecFn = checkWithAspellExec
+
 func (a Aspell) checkSingle(data string, allowedWords []string) error {
 	var words []string
 	var badWords []string
 
-	checkRes, err := checkWithAspellExec(data, a.ExtraDicts...)
+	checkRes, err := aspellExecFn(data, a.ExtraDicts...)
 	if checkRes != "" {
 		words = strings.Split(checkRes, "\n")
 	}
@@ -121,7 +131,7 @@ func (a Aspell) checkSingle(data string, allowedWords []string) error {
 	return nil
 }
 
-func (a Aspell) Check(commits []Commit, content []map[string]string, junitSuite junit.Interface, gitHashes map[string]struct{}) error {
+func (a Aspell) Check(commits []Commit, content []CommitDiff, junitSuite junit.Interface, gitHashes map[string]struct{}) error {
 	preparedCommits := a.prepareCommits(commits, gitHashes)
 	identifierWords := a.collectIdentifiers(content)
 
@@ -183,7 +193,7 @@ func isSignatureLine(line string) bool {
 	return false
 }
 
-func (a Aspell) collectIdentifiers(content []map[string]string) []string {
+func (a Aspell) collectIdentifiers(content []CommitDiff) []string {
 	if a.NoIgnoreIdentifiers {
 		return nil
 	}
@@ -198,19 +208,24 @@ func (a Aspell) collectIdentifiers(content []map[string]string) []string {
 
 	switch a.IdentifierScope {
 	case identifierScopeDiff:
-		for _, file := range content {
-			for name, v := range file {
+		for _, d := range content {
+			for name, v := range d.Files {
 				addWords(name, v)
 			}
 		}
 	case identifierScopeFiles, "":
-		// Read full file content for each changed file
-		for _, file := range content {
-			for name := range file {
+		// Read full file content for each changed file, once per file
+		readFiles := map[string]struct{}{}
+		for _, d := range content {
+			for name := range d.Files {
+				if _, ok := readFiles[name]; ok {
+					continue
+				}
+				readFiles[name] = struct{}{}
 				data, err := os.ReadFile(name)
 				if err != nil {
 					log.Printf("aspell: could not read file %s for identifiers, using diff: %v", name, err)
-					addWords(name, file[name])
+					addWords(name, d.Files[name])
 					continue
 				}
 				addWords(name, string(data))
@@ -267,9 +282,9 @@ func (a Aspell) isIgnoredFile(name string) bool {
 	return false
 }
 
-func (a Aspell) checkFiles(content []map[string]string, identifierWords []string, junitSuite junit.Interface, response *strings.Builder) {
-	for _, file := range content {
-		for name, v := range file {
+func (a Aspell) checkFiles(content []CommitDiff, identifierWords []string, junitSuite junit.Interface, response *strings.Builder) {
+	for _, d := range content {
+		for name, v := range d.Files {
 			if a.isIgnoredFile(name) {
 				continue
 			}
@@ -279,9 +294,13 @@ func (a Aspell) checkFiles(content []map[string]string, identifierWords []string
 			}
 			imports = append(imports, identifierWords...)
 			if err := a.checkSingle(v, imports); err != nil {
-				junitSuite.AddMessageFailed(name, "aspell check failed", err.Error())
-				log.Println(name, err.Error())
-				_, _ = fmt.Fprintf(response, "%s\n", err)
+				location := name
+				if d.Hash != "" {
+					location = fmt.Sprintf("commit %s %q %s", d.Hash, d.Subject, name)
+				}
+				junitSuite.AddMessageFailed(location, "aspell check failed", err.Error())
+				log.Println(location, err.Error())
+				_, _ = fmt.Fprintf(response, "%s: %s\n", location, err)
 			}
 		}
 	}

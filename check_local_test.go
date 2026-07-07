@@ -58,16 +58,29 @@ func TestGetLocalCommitDataOnlyFreshCommits(t *testing.T) {
 	}
 
 	// fresh commits by different authors: author-change heuristic would stop here
-	commitFile(t, wt, dir, "c.txt", "c", "MINOR: one: first fresh commit", "alice")
-	commitFile(t, wt, dir, "d.txt", "d", "MINOR: two: second fresh commit", "bob")
+	c1 := commitFile(t, wt, dir, "c.txt", "c", "MINOR: one: first fresh commit", "alice")
+	c2 := commitFile(t, wt, dir, "d.txt", "d", "MINOR: two: second fresh commit", "bob")
 
-	commits, _, err := getLocalCommitData(&junit.JunitSuiteDummy{})
+	commits, diffs, err := getLocalCommitData(&junit.JunitSuiteDummy{})
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	if len(commits) != 2 {
 		t.Fatalf("expected 2 fresh commits, got %d: %+v", len(commits), commits)
+	}
+	if len(diffs) != 2 {
+		t.Fatalf("expected 2 attributed diffs, got %d: %+v", len(diffs), diffs)
+	}
+	byHash := map[string]map[string]string{}
+	for _, d := range diffs {
+		byHash[d.Hash] = d.Files
+	}
+	if _, ok := byHash[shortHash(c1.String())]["c.txt"]; !ok {
+		t.Errorf("c.txt should be attributed to %s, got %v", shortHash(c1.String()), byHash)
+	}
+	if _, ok := byHash[shortHash(c2.String())]["d.txt"]; !ok {
+		t.Errorf("d.txt should be attributed to %s, got %v", shortHash(c2.String()), byHash)
 	}
 	subjects := map[string]bool{}
 	for _, c := range commits {

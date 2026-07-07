@@ -114,7 +114,7 @@ func TestAspell_Check(t *testing.T) {
 	}
 	type args struct {
 		commits []Commit
-		content []map[string]string
+		content []CommitDiff
 	}
 	tests := []struct {
 		name    string
@@ -135,7 +135,7 @@ func TestAspell_Check(t *testing.T) {
 				Subject: "BUG/MEDIUM: config: add default location of path to the configuration file",
 				Message: "   Signed-off-by: Author: A locatoin <al@al.al>",
 			}},
-			content: []map[string]string{{"test": "test"}},
+			content: []CommitDiff{{Files: map[string]string{"test": "test"}}},
 		},
 		false,
 	}, {
@@ -155,7 +155,7 @@ func TestAspell_Check(t *testing.T) {
 					Message: "   Signed-off-by: Author: A locatoin <al@al.al>",
 				},
 			},
-			content: []map[string]string{{"test": "test"}},
+			content: []CommitDiff{{Files: map[string]string{"test": "test"}}},
 		},
 		true,
 	}, {
@@ -172,7 +172,7 @@ func TestAspell_Check(t *testing.T) {
 				Subject: "BUG/MEDIUM: config: add default location of path to the configuration file",
 				Message: "some commit info\n\n   Signed-off-by: Author: A locatoin <al@al.al>",
 			}},
-			content: []map[string]string{{"test": "test"}},
+			content: []CommitDiff{{Files: map[string]string{"test": "test"}}},
 		},
 		false,
 	}}
