@@ -51,3 +51,8 @@ jobs:
           echo VERSION=$VERSION
           docker tag $IMAGE_NAME $IMAGE_ID:$VERSION
           docker push $IMAGE_ID:$VERSION
+          # release tags also update latest, so it carries the tagged version
+          if [[ "${{ github.ref }}" == "refs/tags/"* ]]; then
+            docker tag $IMAGE_NAME $IMAGE_ID:latest
+            docker push $IMAGE_ID:latest
+          fi
