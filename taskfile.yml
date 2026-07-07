@@ -19,7 +19,9 @@ tasks:
   check-commit:
     desc: "check if the commit message follows the conventional commit format"
     cmds:
-      - go run .
+      # go run skips VCS version stamping, so build first
+      - go build -o check-commit .
+      - ./check-commit
 
   ci:
     desc: "do almost all the checks"

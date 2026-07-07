@@ -44,6 +44,7 @@ func main() {
 		}
 	}
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
+	log.Printf("check-commit %s", version.Version)
 
 	// JUNIT_FILE
 	ts := junit_report.NewTestSuites()
