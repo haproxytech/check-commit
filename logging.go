@@ -27,13 +27,19 @@ func newLogHandler(w io.Writer) slog.Handler {
 	})
 }
 
-// noColor: NO_COLOR always wins, LOG_COLOR forces on, else require a TTY.
+// noColor: NO_COLOR always wins, LOG_COLOR forces on or off,
+// GitLab/GitHub CI logs render ANSI, else require a TTY.
 func noColor() bool {
 	if os.Getenv("NO_COLOR") != "" {
 		return true
 	}
 	switch strings.ToLower(os.Getenv("LOG_COLOR")) {
 	case "1", "true", "always":
+		return false
+	case "0", "false", "never":
+		return true
+	}
+	if os.Getenv("GITLAB_CI") != "" || os.Getenv("GITHUB_ACTIONS") != "" {
 		return false
 	}
 	return !term.IsTerminal(int(os.Stderr.Fd()))

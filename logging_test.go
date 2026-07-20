@@ -46,17 +46,27 @@ func TestNoColorPrecedence(t *testing.T) {
 		name     string
 		noColor  string
 		logColor string
+		gitlab   string
+		github   string
 		want     bool
 	}{
-		{"NO_COLOR wins over LOG_COLOR", "1", "always", true},
-		{"LOG_COLOR forces color", "", "1", false},
-		{"LOG_COLOR true forces color", "", "true", false},
-		{"default without TTY", "", "", true}, // test stderr is not a terminal
+		{"NO_COLOR wins over LOG_COLOR", "1", "always", "", "", true},
+		{"NO_COLOR wins over CI", "1", "", "true", "true", true},
+		{"LOG_COLOR forces color", "", "1", "", "", false},
+		{"LOG_COLOR true forces color", "", "true", "", "", false},
+		{"LOG_COLOR 0 forces off in CI", "", "0", "true", "", true},
+		{"LOG_COLOR false forces off", "", "false", "", "true", true},
+		{"LOG_COLOR never forces off", "", "never", "true", "", true},
+		{"GitLab CI colors on", "", "", "true", "", false},
+		{"GitHub Actions colors on", "", "", "", "true", false},
+		{"default without TTY", "", "", "", "", true}, // test stderr is not a terminal
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Setenv("NO_COLOR", tt.noColor)
 			t.Setenv("LOG_COLOR", tt.logColor)
+			t.Setenv("GITLAB_CI", tt.gitlab)
+			t.Setenv("GITHUB_ACTIONS", tt.github)
 			if got := noColor(); got != tt.want {
 				t.Errorf("noColor() = %v, want %v", got, tt.want)
 			}
