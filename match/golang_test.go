@@ -59,9 +59,9 @@ func TestGetImportWordsFromFile(t *testing.T) {
 			slices.Sort(got)
 			slices.Sort(tt.want)
 			if !slices.Equal(got, tt.want) {
-				for i := len(got) - 1; i >= 0; i-- {
-					for j := len(tt.want) - 1; j >= 0; j-- {
-						if strings.EqualFold(got[i], tt.want[j]) {
+				for i, g := range slices.Backward(got) {
+					for j, v := range slices.Backward(tt.want) {
+						if strings.EqualFold(g, v) {
 							got = remove(got, i)
 							tt.want = remove(tt.want, j)
 							break
