@@ -190,11 +190,12 @@ func (c CommitPolicyConfig) CheckSubject(rawSubject []byte, junitSuite junit.Int
 		submatch := r.FindSubmatchIndex(rawSubject)
 		if len(submatch) == 0 { // no match
 			if !tagOK {
-				junitSuite.AddMessageFailed("", "invalid or missing tag/severity in commit message", fmt.Sprintf("subject: %s", rawSubject))
+				hint := suggestionHint(c.suggestFromSubject(rawSubject, tagAlternative.PatchTypes))
+				junitSuite.AddMessageFailed("", "invalid or missing tag/severity in commit message"+hint, fmt.Sprintf("subject: %s", rawSubject))
 				slog.Error("unable to find tag match in subject", "subject", string(rawSubject))
 
-				return fmt.Errorf("invalid tag or no tag found, searched through [%s]: %w",
-					strings.Join(tagAlternative.PatchTypes, ", "), ErrTagScope)
+				return fmt.Errorf("invalid tag or no tag found%s, searched through [%s]: %w",
+					hint, strings.Join(tagAlternative.PatchTypes, ", "), ErrTagScope)
 			}
 			continue
 		}
@@ -216,11 +217,12 @@ func (c CommitPolicyConfig) CheckSubject(rawSubject []byte, junitSuite junit.Int
 		candidates = append(candidates, string(tagPart))
 
 		if !tagOK {
-			junitSuite.AddMessageFailed("", "invalid tag/severity in commit message", fmt.Sprintf("subject: %s", rawSubject))
+			hint := suggestionHint(c.suggestTag(tag, severity, tagAlternative.PatchTypes))
+			junitSuite.AddMessageFailed("", "invalid tag/severity in commit message"+hint, fmt.Sprintf("subject: %s", rawSubject))
 			slog.Error("unable to find valid tag among candidates", "candidates", candidates)
 
-			return fmt.Errorf("invalid tag or no tag found, searched through [%s]: %w",
-				strings.Join(tagAlternative.PatchTypes, ", "), ErrTagScope)
+			return fmt.Errorf("invalid tag or no tag found%s, searched through [%s]: %w",
+				hint, strings.Join(tagAlternative.PatchTypes, ", "), ErrTagScope)
 		}
 	}
 
