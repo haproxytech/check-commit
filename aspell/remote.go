@@ -70,18 +70,22 @@ func fetchRemoteFile(aspell Aspell) ([]string, error) {
 		if !ok {
 			return nil, fmt.Errorf("aspell remote file: key %q not found or not a string/array in response", aspell.RemoteFile.AllowedItemsKey)
 		}
-		content = strings.TrimRight(content, "\n")
-		if strings.HasPrefix(content, "```yaml\n") && strings.HasSuffix(content, "\n```") {
-			content = strings.TrimPrefix(content, "```yaml\n")
-			content = strings.TrimSuffix(content, "\n```")
-			err = yaml.Unmarshal([]byte(content), &allowedWords)
-			if err != nil {
-				return nil, fmt.Errorf("aspell remote file: failed to parse YAML block: %w", err)
-			}
-			slog.Info("aspell remote file: loaded words", "format", "yaml block", "count", len(allowedWords), "sample", wordSample(allowedWords))
+		content = strings.ReplaceAll(content, "\r\n", "\n")
+		content = strings.TrimSpace(content)
+		content = stripCodeFence(content)
+		if err = yaml.Unmarshal([]byte(content), &allowedWords); err == nil && len(allowedWords) > 0 {
+			slog.Info("aspell remote file: loaded words", "format", "yaml list", "count", len(allowedWords), "sample", wordSample(allowedWords))
 			return allowedWords, nil
 		}
-		allowedWords = strings.Split(content, "\n")
+		allowedWords = allowedWords[:0]
+		for line := range strings.SplitSeq(content, "\n") {
+			line = strings.TrimSpace(line)
+			line = strings.TrimPrefix(line, "- ")
+			if line == "" {
+				continue
+			}
+			allowedWords = append(allowedWords, line)
+		}
 		slog.Info("aspell remote file: loaded words", "format", "newline-separated", "count", len(allowedWords), "sample", wordSample(allowedWords))
 	} else {
 		for _, item := range items {
@@ -91,6 +95,19 @@ func fetchRemoteFile(aspell Aspell) ([]string, error) {
 	}
 
 	return allowedWords, nil
+}
+
+// stripCodeFence removes a surrounding markdown code fence, with or
+// without a language tag, as produced by GitLab wiki pages.
+func stripCodeFence(content string) string {
+	if !strings.HasPrefix(content, "```") || !strings.HasSuffix(content, "\n```") {
+		return content
+	}
+	_, body, found := strings.Cut(content, "\n")
+	if !found {
+		return content
+	}
+	return strings.TrimSuffix(body, "\n```")
 }
 
 func wordSample(words []string) []string {
