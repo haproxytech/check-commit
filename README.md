@@ -133,3 +133,21 @@ allowed:
   - both commit message and all code committed
 - `disabled`
   - check is disabled
+
+### Adding allowed words
+
+```bash
+check-commit append <word> [word...]
+```
+
+Adds words to the `allowed:` list in `.aspell.yml` (created if missing) and
+sorts the whole list. When `remote_file` points at a GitLab wiki page
+(`https://host/group/project/-/wikis/page` or the API form), the wiki page is
+updated instead, preserving its formatting. Any other remote word source
+makes the command refuse and print where to add the word instead.
+
+GitLab authentication uses `private_token_env` / `token_env` when set; when
+the variable is missing or empty, the token is read from a locally installed
+[glab](https://gitlab.com/gitlab-org/cli) (`glab config get token --host <host>`),
+so logged-in users need no extra setup. glab only stores tokens for hosts you
+logged into, so the token is never sent to unknown hosts.

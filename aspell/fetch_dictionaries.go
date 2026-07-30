@@ -224,12 +224,11 @@ func fetchGitLabDirectory(gl GitLabDictionary) (fetchedDictionaries, error) {
 }
 
 func setGitLabToken(req *http.Request, tokenEnv string) {
-	if tokenEnv == "" {
-		return
-	}
-	token := os.Getenv(tokenEnv)
+	token := gitlabToken(tokenEnv, req.URL.Hostname())
 	if token == "" {
-		slog.Warn("dictionary token env is empty", "env", tokenEnv)
+		if tokenEnv != "" {
+			slog.Warn("dictionary token: not in env or glab", "env", tokenEnv)
+		}
 		return
 	}
 	req.Header.Set("PRIVATE-TOKEN", token)
@@ -250,14 +249,16 @@ func fetchSingleFile(url, name, tokenEnv string) (fetchedDictionaries, error) {
 	if err != nil {
 		return result, err
 	}
-	if tokenEnv != "" {
-		token := os.Getenv(tokenEnv)
-		if token != "" {
-			if githubRawPattern.MatchString(url) {
+	switch {
+	case githubRawPattern.MatchString(url):
+		if tokenEnv != "" {
+			if token := os.Getenv(tokenEnv); token != "" {
 				req.Header.Set("Authorization", "Bearer "+token)
-			} else if strings.Contains(url, "/api/v4/") {
-				req.Header.Set("PRIVATE-TOKEN", token)
 			}
+		}
+	case strings.Contains(url, "/api/v4/"):
+		if token := gitlabToken(tokenEnv, req.URL.Hostname()); token != "" {
+			req.Header.Set("PRIVATE-TOKEN", token)
 		}
 	}
 

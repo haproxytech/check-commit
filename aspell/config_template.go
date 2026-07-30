@@ -50,7 +50,8 @@ const configTemplate = `## Spell check scope (default: subject)
 #   url_env: ALLOWED_WORDS_URL
 #   ## Set a custom HTTP header whose value is read from the named env var
 #   header_from_env: X-Custom-Header
-#   ## Set PRIVATE-TOKEN header from this env var (GitLab/GitHub auth)
+#   ## Set PRIVATE-TOKEN header from this env var (GitLab/GitHub auth).
+#   ## When unset/empty, falls back to glab's stored token for the host.
 #   private_token_env: PRIVATE_TOKEN
 #   ## JSON key that contains the word list in the response
 #   allowed_items_key: words
@@ -65,7 +66,8 @@ const configTemplate = `## Spell check scope (default: subject)
 #   ## Fetch every .txt/.rws file from a GitLab repo directory (supports self-hosted instances)
 #   gitlab:
 #     - url: "https://gitlab.com/group/project/-/tree/main/path/to/dictionaries"
-#       ## Optional env var holding a GitLab private token (needed for private repos)
+#       ## Optional env var holding a GitLab private token (needed for private repos).
+#       ## When unset/empty, falls back to glab's stored token for the host.
 #       token_env: GITLAB_TOKEN
 #   ## Fetch individual dictionary files by direct URL
 #   urls:

@@ -37,12 +37,10 @@ func fetchRemoteFile(aspell Aspell) ([]string, error) {
 		}
 		req.Header.Set(aspell.RemoteFile.HeaderFromENV, envValue)
 	}
-	if aspell.RemoteFile.PrivateTokenENV != "" {
-		envValue := os.Getenv(aspell.RemoteFile.PrivateTokenENV)
-		if envValue == "" {
-			slog.Warn("aspell remote file: private token env is empty", "env", aspell.RemoteFile.PrivateTokenENV)
-		}
-		req.Header.Set("PRIVATE-TOKEN", envValue)
+	if token := gitlabToken(aspell.RemoteFile.PrivateTokenENV, req.URL.Hostname()); token != "" {
+		req.Header.Set("PRIVATE-TOKEN", token)
+	} else if aspell.RemoteFile.PrivateTokenENV != "" {
+		slog.Warn("aspell remote file: no token in env or glab", "env", aspell.RemoteFile.PrivateTokenENV)
 	}
 
 	client := &http.Client{}
@@ -106,6 +104,9 @@ func stripCodeFence(content string) string {
 	_, body, found := strings.Cut(content, "\n")
 	if !found {
 		return content
+	}
+	if body == "```" {
+		return ""
 	}
 	return strings.TrimSuffix(body, "\n```")
 }

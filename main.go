@@ -24,6 +24,24 @@ func main() {
 		slog.Error("failed to read build info", "err", err)
 		os.Exit(1)
 	}
+	if len(os.Args) >= 2 && os.Args[1] == "append" {
+		if len(os.Args) < 3 {
+			_, _ = fmt.Fprintln(os.Stderr, "usage: check-commit append <word> [word...]")
+			os.Exit(1)
+		}
+		added, skipped, err := aspell.Append(".aspell.yml", os.Args[2:])
+		if err != nil {
+			_, _ = fmt.Fprintf(os.Stderr, "error: %s\n", err)
+			os.Exit(1)
+		}
+		for _, w := range added {
+			fmt.Println("added:", w)
+		}
+		for _, w := range skipped {
+			fmt.Println("already allowed:", w)
+		}
+		os.Exit(0)
+	}
 	if len(os.Args) == 2 {
 		switch os.Args[1] {
 		case "version":
