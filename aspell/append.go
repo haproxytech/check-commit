@@ -84,10 +84,8 @@ func appendLocal(filename string, data []byte, words []string) (added, skipped [
 	if len(data) == 0 {
 		lines = nil
 	}
-	for _, line := range lines {
-		if allowedFlowKeyPattern.MatchString(line) {
-			return nil, nil, errors.New("flow-style allowed list not supported; convert to block style")
-		}
+	if slices.ContainsFunc(lines, allowedFlowKeyPattern.MatchString) {
+		return nil, nil, errors.New("flow-style allowed list not supported; convert to block style")
 	}
 	start, end := findAllowedBlock(lines)
 
