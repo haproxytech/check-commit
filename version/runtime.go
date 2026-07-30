@@ -40,16 +40,17 @@ func Set() error {
 	if len(commit) > 8 {
 		commit = commit[:8]
 	}
-	if commit == "" {
-		commit = "unknown"
-	}
 
 	var dirty string
 	if get(buildInfo, "vcs.modified") == "true" {
 		dirty = ".dirty"
 	}
-	Version = strings.Replace(buildInfo.Main.Version, "(devel)", "dev", 1) + "." + commit + dirty
 	Tag = strings.Replace(buildInfo.Main.Version, "(devel)", "dev", 1)
+	// Proxy builds carry no VCS metadata: show the bare module version.
+	Version = Tag + dirty
+	if commit != "" {
+		Version = Tag + "." + commit + dirty
+	}
 
 	return nil
 }
